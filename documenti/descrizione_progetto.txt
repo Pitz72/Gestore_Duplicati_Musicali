@@ -1,0 +1,47 @@
+DESCRIZIONE DEL PROGETTO: Gestore Duplicati Musicali
+
+Obiettivo:
+L'applicazione "Gestore Duplicati Musicali" è progettata per analizzare una libreria musicale fornita dall'utente, identificare e gestire i file musicali duplicati, i file non conformi (ad esempio, estrazioni audio da video) e i gruppi di versioni diverse dello stesso brano che potrebbero richiedere una verifica manuale.
+L'applicazione offre sia un'interfaccia a riga di comando (`gestore_duplicati_musicali.py`) per utenti avanzati e scripting, sia un'interfaccia utente grafica (`gui_gestore_musicale.py`) per un utilizzo più intuitivo.
+
+Funzionalità Principali (Versione Attuale):
+1.  Modalità di Esecuzione Flessibile:
+    *   Interfaccia a Riga di Comando (CLI): Tramite `gestore_duplicati_musicali.py` per automazione e controllo dettagliato.
+    *   Interfaccia Utente Grafica (GUI): Tramite `gui_gestore_musicale.py` (basata su Tkinter) per facilità d'uso, con selezione interattiva delle cartelle e visualizzazione dei log in tempo reale.
+2.  Analisi Ricorsiva: Scansiona la cartella musicale specificata e tutte le sue sottocartelle alla ricerca di file `.mp3`.
+3.  Separazione File Non Conformi: Identifica i file che sembrano provenire da video (es. contenenti "(official video)", "(lyrics video)" nel nome) e li sposta in una cartella separata (default: "NON CONFORMI" relativa alla cartella musicale).
+4.  Estrazione Metadati: Per i file audio rimanenti, estrae le informazioni su Artista e Titolo da:
+    *   Tag ID3 (priorità alta).
+    *   Nome del file (come fallback, con pulizia di elementi comuni come numeri di traccia).
+5.  Normalizzazione: Normalizza le informazioni di Artista e Titolo (minuscolo, rimozione spazi extra e punteggiatura base, MA conservando parentesi tonde e quadre e il loro contenuto per preservare tag di versione come "(Live)", "(Remastered)") per un confronto più accurato.
+6.  Identificazione Duplicati Audio: Raggruppa i file che, dopo normalizzazione, corrispondono allo stesso Artista e Titolo.
+7.  Gestione Duplicati Audio: Per ogni gruppo di duplicati audio identificati:
+    *   Mantiene il file con la dimensione maggiore (considerato di qualità superiore).
+    *   Sposta gli altri file duplicati in una cartella dedicata (default: "DOPPIONI" relativa alla cartella musicale).
+8.  Gestione File "DA VERIFICARE":
+    *   Dopo la gestione dei duplicati esatti, analizza i file audio rimanenti.
+    *   Utilizza `VERSION_PATTERNS` per identificare tag comuni di versione (es. "(live)", "(remix)") ed estrarre un "titolo base".
+    *   Se per un artista e "titolo base" vengono trovati più file (es. versione originale + versioni alternative), tutti questi file vengono spostati in una sottocartella dedicata all'interno di `DOPPIONI/[NOME_CARTELLA_DA_VERIFICARE]/NomeArtista/NomeTitoloBase/` (default nome sottocartella: "DA_VERIFICARE").
+    *   L'utente viene notificato se file sono stati spostati in questa area per revisione manuale.
+9.  Input Utente:
+    *   CLI: Accetta percorsi come argomenti da riga di comando, inclusa l'opzione `--cartella-da-verificare`.
+    *   GUI: Permette la selezione delle cartelle principali; il percorso "DA VERIFICARE" è derivato e visualizzato.
+10. Feedback Visivo e di Avanzamento:
+    *   CLI: Fornisce un output dettagliato sul terminale, inclusa una percentuale di avanzamento durante la scansione dei file audio basata su un pre-conteggio.
+    *   GUI: Visualizza i log delle operazioni in un'area di testo scorrevole, disabilita i controlli durante l'analisi e mostra una barra di progresso (`ttk.Progressbar`) che riflette l'avanzamento della scansione dei file audio.
+
+Evoluzioni Future Previste:
+*   Miglioramenti GUI:
+    *   Visualizzazione interattiva dei potenziali duplicati e dei file "DA VERIFICARE" prima di qualsiasi spostamento, con possibilità per l'utente di:
+        *   Selezionare il file da mantenere.
+        *   Marcare file come "non duplicati" o approvare/modificare lo spostamento in "DA VERIFICARE".
+        *   Confrontare metadati e possibilmente ascoltare anteprime.
+    *   Possibilità di interrompere l'analisi in corso in modo sicuro.
+    *   Configurazione più granulare dei percorsi direttamente dalla GUI (es. nome esatto cartella "DA_VERIFICARE").
+*   Gestione Avanzata dei File:
+    *   Logica più sofisticata per identificare file "DA VERIFICARE" (es. cover, conflitti di metadati più complessi, soglie di similarità per titoli).
+    *   Permettere all'utente di definire `VERSION_PATTERNS` personalizzati (tramite file di configurazione o GUI).
+*   Supporto per altri formati audio (FLAC, AAC, ecc.).
+*   Criteri di qualità più avanzati per la selezione del file da mantenere (es. bitrate, data modifica).
+*   Logging più strutturato su file (anche per la GUI).
+*   Packaging dell'applicazione come eseguibile stand-alone per Windows, macOS e Linux. 

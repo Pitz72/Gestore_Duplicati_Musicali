@@ -1,0 +1,99 @@
+CHECKLIST ANTI-REGRESSIONE - Gestore Duplicati Musicali
+
+Scopo: Questo documento serve come promemoria delle funzionalità chiave e dei comportamenti attesi dello script. Va consultato prima di apportare modifiche significative e dopo averle implementate, per assicurarsi che le funzionalità esistenti non siano state compromesse (regressione).
+
+Ogni volta che si apporta una modifica allo script `gestore_duplicati_musicali.py` o `gui_gestore_musicale.py`, verificare che:
+
+1.  PARAMETRI DA RIGA DI COMANDO (`gestore_duplicati_musicali.py`):
+    [ ] Lo script accetta correttamente il percorso `cartella_musicale`.
+    [ ] Lo script accetta `--cartella-duplicati` e usa "DOPPIONI" come default se omesso.
+    [ ] Lo script accetta `--cartella-non-conformi` e usa "NON CONFORMI" come default se omesso.
+    [ ] Lo script accetta `--cartella-da-verificare` e usa "DA_VERIFICARE" (come sottocartella di duplicati) come default se omesso.
+    [ ] I percorsi relativi per le cartelle di output (`DOPPIONI`, `NON CONFORMI`) vengono creati correttamente DENTRO `cartella_musicale`.
+    [ ] Il percorso per `DA_VERIFICARE` viene creato correttamente DENTRO la cartella dei duplicati effettiva.
+    [ ] I percorsi assoluti per le cartelle di output vengono usati così come sono.
+    [ ] Lo script gestisce correttamente l'errore se `cartella_musicale` non esiste o non è una directory.
+    [ ] Le cartelle di output (`DOPPIONI`, `NON CONFORMI`, `DA_VERIFICARE` e le sue sottocartelle per artista/titolo) vengono create se non esistono.
+
+2.  IDENTIFICAZIONE E SPOSTAMENTO FILE "NON CONFORMI":
+    [ ] File con nomi contenenti pattern definiti in `VIDEO_PATTERNS` (es. "(official video)", "(lyrics video)") vengono spostati nella cartella `NON CONFORMI`.
+    [ ] Questi file NON vengono processati per l'estrazione di metadati audio o per la ricerca di duplicati audio.
+    [ ] Lo spostamento gestisce conflitti di nomi nella cartella `NON CONFORMI` (es. aggiungendo `_1`, `_2`).
+    [ ] Viene stampato un messaggio chiaro per ogni file spostato in `NON CONFORMI`.
+    [ ] Viene stampato un riepilogo del numero di file spostati in `NON CONFORMI`.
+    [ ] Lo script gestisce file `.mp3` corrotti o senza tag ID3 (non va in errore, li scarta o usa nome file).
+
+3.  ESTRAZIONE METADATI AUDIO (per file non "Non Conformi"):
+    [ ] I tag ID3 (Artista, Titolo) vengono letti correttamente usando `mutagen`.
+    [ ] Se i tag ID3 sono completi, vengono usati con priorità.
+    [ ] Se i tag ID3 sono incompleti o assenti, si tenta l'estrazione dal nome del file.
+    [ ] `estrai_info_da_nome_file` pulisce correttamente i nomi dei file usando `pattern_da_rimuovere_per_audio`.
+    [ ] `estrai_info_da_nome_file` tenta di separare "Artista - Titolo" correttamente.
+    [ ] La funzione `normalizza_testo` viene applicata correttamente all'artista e al titolo finali (minuscolo, trim, punteggiatura base MA conservando `()` e `[]` e il loro contenuto).
+    [ ] La conservazione di `()` e `[]` e del loro contenuto permette effettivamente di distinguere versioni speciali (es. "(Live)", "(Remastered)") da quelle standard.
+    [ ] File senza sufficienti informazioni (artista/titolo) dopo estrazione e normalizzazione vengono scartati per l'analisi dei duplicati.
+    [ ] File con lo stesso nome ma in sottocartelle diverse vengono processati individualmente e correttamente.
+
+4.  IDENTIFICAZIONE E GESTIONE DUPLICATI AUDIO:
+    [ ] I file audio vengono raggruppati correttamente in base alla chiave (artista_normalizzato, titolo_normalizzato).
+    [ ] Per i gruppi con più di un file:
+        [ ] Viene identificato il file con la dimensione maggiore come quello da mantenere.
+        [ ] Gli altri file del gruppo vengono spostati nella cartella `DOPPIONI`.
+        [ ] Lo spostamento gestisce conflitti di nomi nella cartella `DOPPIONI`.
+        [ ] Vengono stampati messaggi chiari per il file mantenuto e per ogni file spostato.
+    [ ] Se i file hanno dimensioni identiche, uno viene mantenuto e gli altri spostati (comportamento deterministico, es. il primo della lista).
+    [ ] Viene stampato un riepilogo del numero di file duplicati audio spostati.
+    [ ] Lo script gestisce (stampando un avviso) i file che risultano non trovati al momento dello spostamento (es. cancellati da un altro processo dopo la scansione iniziale).
+
+5.  FEEDBACK E AVANZAMENTO (CLI):
+    [ ] L'output è sufficientemente verboso da capire cosa sta facendo lo script (`flush=True` funziona).
+    [ ] Viene mostrato un pre-conteggio dei file audio da analizzare.
+    [ ] Durante la scansione dei file audio, viene mostrata una percentuale di avanzamento sulla stessa riga, aggiornata dinamicamente (es. `Progresso scansione: X/Y (Z%)`).
+    [ ] Messaggi di errore sono chiari e informativi.
+    [ ] Vengono stampati messaggi di inizio/fine per le fasi principali (scansione, duplicati, da verificare).
+    [ ] Lo script gestisce correttamente cartelle vuote o senza file `.mp3`.
+
+6.  GESTIONE FILE "DA VERIFICARE":
+    [ ] La funzione `estrai_titolo_base_e_versione` usa correttamente `VERSION_PATTERNS` per identificare e separare i tag di versione dal titolo normalizzato.
+    [ ] `sposta_file_da_verificare` viene chiamato dopo `sposta_duplicati`.
+    [ ] Vengono considerati solo i file mantenuti dopo la deduplicazione esatta.
+    [ ] I file vengono raggruppati correttamente per (artista_normalizzato, titolo_base).
+    [ ] Solo i gruppi con più di un file (originale + versioni) vengono processati per lo spostamento in "DA VERIFICARE".
+    [ ] Tutti i file appartenenti a un gruppo identificato vengono spostati.
+    [ ] I file vengono spostati in sottocartelle `DA_VERIFICARE/NomeArtista/NomeTitoloBase/`.
+    [ ] I nomi delle sottocartelle artista/titolo vengono sanitizzati correttamente per l'uso come nomi di directory.
+    [ ] Lo spostamento gestisce conflitti di nomi nella cartella di destinazione finale (aggiungendo `_1`, `_2`, anche se meno probabile qui).
+    [ ] Viene stampato un messaggio chiaro per ogni gruppo e file spostato in "DA VERIFICARE".
+    [ ] Viene stampato un riepilogo del numero totale di file spostati in "DA VERIFICARE".
+    [ ] Se la cartella `DA_VERIFICARE` (o le sottocartelle) non può essere creata, viene loggato un errore e la funzione non fallisce catastroficamente.
+    [ ] File non trovati durante questa fase vengono gestiti con un avviso.
+
+7.  INTERFACCIA UTENTE GRAFICA (GUI - `gui_gestore_musicale.py`):
+    [ ] La GUI si avvia correttamente.
+    [ ] I campi per i percorsi delle cartelle (Musicale, Duplicati, Non Conformi) sono presenti e modificabili.
+    [ ] Un campo per il percorso "Cartella 'Da Verificare'" è presente, visualizza il percorso corretto ed è in sola lettura.
+    [ ] I bottoni "Sfoglia..." aprono la finestra di dialogo corretta per la selezione della cartella.
+    [ ] Selezionando la "Cartella Musicale", i campi "Cartella Duplicati", "Cartella Non Conformi" e "Cartella 'Da Verificare'" vengono pre-compilati con percorsi di default corretti.
+    [ ] Se si modifica la "Cartella Duplicati", il percorso "Cartella 'Da Verificare'" si aggiorna automaticamente.
+    [ ] L'area di Log è presente e visualizza i messaggi (inclusi quelli della nuova fase "DA VERIFICARE").
+    [ ] Il pulsante "Pulisci Log" cancella il contenuto dell'area di log.
+    [ ] Il pulsante "Avvia Analisi":
+        [ ] È inizialmente abilitato.
+        [ ] Richiede che la "Cartella Musicale" sia specificata; mostra un errore se vuota.
+        [ ] Disabilita i campi di input, i bottoni "Sfoglia..." e se stesso durante l'analisi.
+        [ ] Esegue l'analisi in un thread separato (la GUI non si blocca).
+        [ ] Mostra i messaggi di log provenienti da `avvia_gestione_duplicati` nell'area di log della GUI.
+        [ ] Al termine dell'analisi (successo o errore), riabilita i controlli.
+        [ ] Gestisce correttamente gli errori durante l'analisi e li logga nella GUI.
+    [ ] Barra di Progresso Precisa (GUI):
+        [ ] La `ttk.Progressbar` è visibile.
+        [ ] Viene inizializzata a 0 all'avvio dell'analisi.
+        [ ] Si aggiorna dinamicamente durante la scansione dei file audio in `scansiona_cartella`.
+        [ ] Raggiunge il 100% al completamento della scansione (o se non ci sono file audio).
+    [ ] (Futuro) Il pulsante "Interrompi" (quando implementato) interrompe l'analisi in modo sicuro.
+
+NOTE AGGIUNTIVE PER LO SVILUPPATORE:
+*   Prima di un commit importante, eseguire lo script su una piccola cartella di test con casi noti (duplicati, non conformi, file senza ID3, file con nomi complessi) e verificare che l'output e gli spostamenti siano quelli attesi.
+*   Mantenere aggiornato il `log_sviluppo.txt` con le modifiche rilevanti.
+*   Se si modifica la logica di identificazione/normalizzazione, considerare l'impatto sui test esistenti e, se necessario, aggiornare questa checklist.
+*   Quando verrà sviluppata la GUI, creare una sezione apposita in questa checklist per le sue funzionalità chiave. 

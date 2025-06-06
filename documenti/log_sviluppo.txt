@@ -1,0 +1,142 @@
+LOG DI SVILUPPO - Gestore Duplicati Musicali
+
+Versione 0.1 (Script Iniziale da Riga di Comando)
+--------------------------------------------------
+*   Creazione struttura base dello script Python (`gestore_duplicati_musicali.py`).
+*   Import moduli necessari: `os`, `shutil`, `argparse`, `pathlib`.
+*   Implementazione argomenti da riga di comando:
+    *   `cartella_musicale` (obbligatorio).
+    *   `--cartella-duplicati` (default: "DOPPIONI" relativa alla cartella musicale).
+*   Creazione automatica della cartella dei duplicati se non esiste.
+*   Installazione e integrazione della libreria `mutagen` per la lettura dei tag ID3.
+*   Implementazione `estrai_info_id3(file_path)` per ottenere titolo e artista dai tag ID3.
+*   Implementazione `scansiona_cartella(cartella_path)`:
+    *   Scansione ricorsiva per file `.mp3`.
+    *   Utilizzo iniziale di (artista, titolo) da ID3 come chiave per raggruppare i file.
+    *   Stampa un riepilogo dei brani identificati e potenziali duplicati.
+*   Implementazione `sposta_duplicati(brani_identificati, cartella_duplicati_path)`:
+    *   Criterio di selezione: mantiene il file con dimensione maggiore.
+    *   Sposta gli altri file del gruppo nella cartella dei duplicati.
+    *   Gestione conflitti di nomi nella cartella duplicati (aggiunge suffisso numerico).
+
+Versione 0.2 (Miglioramento Estrazione Info e Normalizzazione)
+---------------------------------------------------------------
+*   Import modulo `re` per espressioni regolari.
+*   Implementazione `normalizza_testo(testo)` per pulire e standardizzare stringhe di artista/titolo (minuscolo, trim, rimozione punteggiatura base, sostituzione `&` con `and`, rimozione spazi multipli).
+*   Implementazione `estrai_info_da_nome_file(nome_file_stem)`:
+    *   Utilizza una lista `pattern_da_rimuovere` per eliminare elementi comuni dai nomi dei file (numeri traccia, tag come "(official video)", ecc.) prima dell'estrazione.
+    *   Tenta di separare "Artista - Titolo" dal nome file pulito.
+*   Modifica `scansiona_cartella`:
+    *   Logica di priorità: ID3 completi > Nome file completo (se ID3 incompleti).
+    *   Applica `normalizza_testo` all'artista e al titolo finali prima di creare la chiave del brano.
+    *   Miglioramento dei messaggi di log per indicare la fonte delle informazioni (ID3 vs Nome File) e discrepanze.
+*   Risoluzione di un falso positivo del linter relativo a espressioni regolari.
+
+Versione 0.3 (Gestione File Non Conformi e Miglioramento Feedback)
+-------------------------------------------------------------------
+*   Introduzione concetto di file "Non Conformi" (es. estratti da video).
+*   Aggiunta costante `VIDEO_PATTERNS` per identificare file legati a video.
+*   Implementazione `identifica_come_video(nome_file_stem)`.
+*   Modifica `estrai_info_da_nome_file`: la lista `pattern_da_rimuovere_per_audio` diventa più conservativa (non rimuove più "live", "acoustic", ecc., né anni in modo generico). Pulisce anche i `VIDEO_PATTERNS` come precauzione.
+*   Modifica `scansiona_cartella`:
+    *   Aggiunto argomento `cartella_non_conformi_path`.
+    *   Primo smistamento: i file identificati come "video" da `identifica_come_video` vengono spostati direttamente nella `cartella_non_conformi_path` e non ulteriormente processati per duplicati audio.
+    *   Iterazione su `list(cartella_path.rglob('*'))` per permettere lo spostamento durante il ciclo.
+*   Modifica `main()`:
+    *   Aggiunto argomento `--cartella-non-conformi` (default: "NON CONFORMI").
+    *   Creazione automatica della `cartella_non_conformi_path`.
+*   Miglioramento feedback visivo:
+    *   Aggiunto `flush=True` a tutte le principali chiamate `print()`.
+    *   Aggiunto contatore di file analizzati (`Analizzo file X/Y`).
+    *   Aggiunti messaggi di inizio/fine per le fasi principali.
+
+Versione 0.3.1 (Correzione Normalizzazione Aggressiva)
+--------------------------------------------------------
+*   Analisi dell'output di un test su una libreria ampia ha rivelato che la normalizzazione era troppo aggressiva, 
+    specialmente la rimozione di parentesi `()` e `[]` e del loro contenuto.
+    Questo causava l'errata identificazione di versioni distinte (es. "Live", "Remastered") come duplicati.
+*   Modificata la funzione `normalizza_testo`:
+    *   L'espressione regolare `re.sub` ora NON rimuove più le parentesi tonde `()` e quadre `[]`.
+    *   Aggiunta una pulizia per rimuovere spazi extra formatisi immediatamente all'interno delle parentesi conservate (es. `( live )` -> `(live)`).
+*   Obiettivo: Rendere lo script da riga di comando più conservativo nell'identificazione dei duplicati, 
+    preservando le versioni speciali dei brani. La gestione più fine di queste versioni è rimandata all'interfaccia grafica.
+
+Versione 0.3.2 (Test Post-Correzione Normalizzazione)
+--------------------------------------------------------
+*   Eseguito test su ampia libreria musicale (`J:\99 MUSICA\ARTISTI VARI - INTERNAZIONALI`) dopo la correzione alla funzione `normalizza_testo` (v0.3.1).
+*   Lo script ha identificato e spostato 12282 file duplicati.
+*   L'utente ha osservato che il tempo di analisi potrebbe essere stato inferiore rispetto a esecuzioni precedenti con normalizzazione più aggressiva.
+*   Confermata la funzionalità della conservazione delle parentesi per distinguere meglio le versioni dei brani.
+
+Versione 0.3.3 (Test Cartella ITALIANI)
+-----------------------------------------
+*   Eseguito test su un'altra ampia libreria musicale (`J:\99 MUSICA\ARTISTI VARI - ITALIANI`) per verificare la robustezza dello script.
+*   Lo script ha identificato e spostato 15 file nella cartella "NON CONFORMI".
+*   Sono stati identificati e spostati 12157 file audio duplicati.
+*   Il test conferma il comportamento atteso dello script anche su un dataset diverso, con un numero significativo di duplicati gestiti correttamente.
+
+Versione 0.4 (Introduzione GUI Base con Tkinter - MVP)
+------------------------------------------------------
+*   Modifiche a `gestore_duplicati_musicali.py`:
+    *   Introdotto un parametro `logger` opzionale alle funzioni `scansiona_cartella` e `sposta_duplicati`. Default a `_default_logger` che usa `print()`.
+    *   La precedente funzione `main()` è stata rinominata in `avvia_gestione_duplicati` e ora accetta i percorsi delle cartelle (come oggetti `Path` assoluti e risolti) e un `logger`.
+    *   Creata una nuova funzione `main_cli()` che gestisce il parsing degli argomenti da riga di comando, la preparazione dei percorsi (inclusa la creazione delle cartelle di output) e chiama `avvia_gestione_duplicati` con un logger che stampa su console.
+    *   Il blocco `if __name__ == "__main__":` ora chiama `main_cli()`, mantenendo la piena funzionalità da riga di comando.
+*   Creazione del file `gui_gestore_musicale.py`:
+    *   Implementata una classe base `AppGestoreMusicaleV0_1` utilizzando `Tkinter`.
+    *   La GUI include campi per specificare la cartella musicale, la cartella dei duplicati e quella dei non conformi, con bottoni "Sfoglia..." per la selezione.
+    *   Implementata la pre-compilazione automatica dei percorsi per duplicati e non conformi basati sulla cartella musicale selezionata.
+    *   Aggiunta un'area di testo (`scrolledtext`) per visualizzare i log delle operazioni.
+    *   Il pulsante "Avvia Analisi" esegue la logica di `avvia_gestione_duplicati` in un thread separato per non bloccare l'interfaccia utente.
+    *   I messaggi di log dalla logica di business vengono reindirizzati all'area di testo della GUI.
+    *   I controlli di input vengono disabilitati durante l'analisi e riabilitati al termine.
+    *   Aggiunto pulsante "Pulisci Log".
+*   Obiettivo: Fornire un'interfaccia grafica basilare per le funzionalità esistenti dello script, migliorando l'usabilità.
+
+Versione 0.4.1 (Feedback Test GUI e Pianificazione Miglioramenti)
+-------------------------------------------------------------------
+*   Test della GUI v0.1 Alpha su una libreria musicale di grandi dimensioni (`C:\Users\Utente\Downloads\TEST`) ha avuto successo, spostando correttamente 39032 file duplicati.
+*   Feedback utente e idee per miglioramenti futuri:
+    *   **Cartella "DA VERIFICARE":** Introdurre una sottocartella (es. `DOPPIONI/DA VERIFICARE`) per i file che richiedono un controllo manuale (es. diverse versioni dello stesso brano come Live, Remastered, Acoustic, potenziali cover, metadati conflittuali evidenti). Lo script dovrebbe notificare l'utente alla fine dell'analisi se ci sono file in questa cartella.
+    *   **Barra di Progresso Precisa:** Implementare una barra di progresso che mostri una stima più accurata del tempo rimanente. Richiede un conteggio preliminare dei file audio effettivi da analizzare nella libreria.
+*   Decisione di implementare la **barra di progresso precisa** come prossimo passo prioritario, in quanto migliora l'esperienza utente sia per la CLI che per la GUI durante lunghe analisi.
+*   Successivamente, si affronterà l'implementazione della cartella "DA VERIFICARE".
+
+Versione 0.5 (Barra Progresso Precisa e Gestione Iniziale "DA VERIFICARE")
+------------------------------------------------------------------------------
+*   Miglioramenti a `gestore_duplicati_musicali.py`:
+    *   **Barra di Progresso Precisa (CLI):**
+        *   `scansiona_cartella` ora esegue un pre-conteggio dei soli file audio supportati (es. `.mp3`) per determinare il totale effettivo per la barra di progresso.
+        *   Introdotto un parametro `progress_callback` opzionale in `scansiona_cartella` e `avvia_gestione_duplicati`.
+        *   `main_cli` ora passa un `cli_progress_callback` che stampa la percentuale di avanzamento sulla stessa riga del terminale.
+        *   `scansiona_cartella` restituisce anche il conteggio totale dei file audio e quelli analizzati.
+    *   **Gestione Cartella "DA VERIFICARE" (Logica Base):**
+        *   Aggiunta costante `VERSION_PATTERNS` per identificare tag di versione comuni nei titoli (es. "(live)", "(remix)", "(remastered)").
+        *   Implementata `estrai_titolo_base_e_versione(titolo_normalizzato)` per separare il titolo base dal tag di versione.
+        *   Modificata `sposta_duplicati` per restituire l'elenco dei file audio mantenuti (non spostati come duplicati esatti).
+        *   Implementata nuova funzione `sposta_file_da_verificare(file_da_considerare, cartella_base_da_verificare_path)`:
+            *   Prende in input i file mantenuti dopo la deduplicazione.
+            *   Estrae artista, titolo normalizzato, titolo base e tag di versione per ciascun file.
+            *   Raggruppa i file per (artista_normalizzato, titolo_base).
+            *   Se un gruppo contiene più di un file (indicando diverse versioni dello stesso brano base), sposta *tutti* i file di quel gruppo in una sottocartella dedicata dentro la cartella "DA VERIFICARE" (es. `.../DOPPIONI/DA_VERIFICARE/NomeArtista/NomeTitoloBase/`).
+            *   Logga le operazioni e il numero di file spostati per verifica.
+        *   `avvia_gestione_duplicati` ora orchestra la chiamata a `sposta_file_da_verificare` dopo la deduplicazione standard.
+        *   Aggiunto argomento da riga di comando `--cartella-da-verificare` (default: "DA_VERIFICARE", come sottocartella di `--cartella-duplicati`).
+        *   La cartella `DA_VERIFICARE` e le sue sottocartelle per artista/titolo vengono create automaticamente.
+*   Miglioramenti a `gui_gestore_musicale.py`:
+    *   **Barra di Progresso Precisa (GUI):**
+        *   Scommentata e configurata la `ttk.Progressbar`.
+        *   Implementato metodo `_update_progress_bar(corrente, totale)`.
+        *   `_esegui_analisi` ora passa `_update_progress_bar` come `progress_callback` a `avvia_gestione_duplicati`.
+        *   La barra di progresso si inizializza, si aggiorna durante la scansione e si completa al termine.
+    *   **Gestione Cartella "DA VERIFICARE" (GUI):**
+        *   Aggiunta una variabile `cartella_da_verificare_var`.
+        *   Aggiunto un campo di testo `Entry` (sola lettura) per mostrare il percorso della cartella "DA VERIFICARE".
+        *   Il percorso "DA VERIFICARE" viene derivato automaticamente da quello dei duplicati e aggiornato di conseguenza.
+        *   `_esegui_analisi` calcola e passa il `path_da_verificare` corretto a `avvia_gestione_duplicati`.
+*   Test preliminari indicano che la barra di progresso è funzionale, sebbene l'aggiornamento possa apparire approssimativo in alcuni scenari.
+*   La logica "DA VERIFICARE" sposta i gruppi di versioni come previsto.
+
+Prossimi Passi Pianificati (ad alto livello):
+*   Aggiornamento completo della documentazione (descrizione progetto, checklist).
+*   Test approfonditi della funzionalità "DA VERIFICARE" su diverse librerie. 
