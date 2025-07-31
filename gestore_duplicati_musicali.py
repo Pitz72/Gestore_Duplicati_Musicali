@@ -17,25 +17,26 @@ VIDEO_PATTERNS = [
 
 VERSION_PATTERNS = [
     # Pattern comuni per versioni, da usare per estrarre il titolo base
-    # Devono essere abbastanza specifici per evitare falsi positivi
-    # L'ordine potrebbe contare se alcuni pattern sono sottostringhe di altri
-    r'\s*\(live.*?\)', r'\s*\[live.*?\]',
-    r'\s*\(remastered.*?\)', r'\s*\[remastered.*?\]',
-    r'\s*\(acoustic.*?\)', r'\s*\[acoustic.*?\]',
-    r'\s*\(remix.*?\)', r'\s*\[remix.*?\]',
-    r'\s*\(radio edit.*?\)', r'\s*\[radio edit.*?\]',
-    r'\s*\(album version.*?\)', r'\s*\[album version.*?\]',
-    r'\s*\(extended.*?\)', r'\s*\[extended.*?\]',
+    # L'ordine è importante: i più specifici (es. 'radio edit') prima dei più generici (es. 'edit')
+    r'\s*\([^)]*radio edit[^)]*\)', r'\s*\[[^]]*radio edit[^]]*\]',
+    r'\s*\([^)]*album version[^)]*\)', r'\s*\[[^]]*album version[^]]*\]',
+    r'\s*\([^)]*extended[^)]*\)', r'\s*\[[^]]*extended[^]]*\]',
+    r'\s*\([^)]*instrumental[^)]*\)', r'\s*\[[^]]*instrumental[^]]*\]',
+    r'\s*\([^)]*unplugged[^)]*\)', r'\s*\[[^]]*unplugged[^]]*\]',
+    # Pattern che includono anni, spesso usati per remaster/riedizioni
+    r'\s*\(\d{4}[^)]*(version|mix|edit|remaster)[^)]*\)',
+    r'\s*\[\d{4}[^]]*(version|mix|edit|remaster)[^]]*\]', # Corretto doppio backslash e reso più generico
+    # Pattern generici per parole chiave
+    r'\s*\([^)]*live[^)]*\)', r'\s*\[[^]]*live[^]]*\]',
+    r'\s*\([^)]*remastered[^)]*\)', r'\s*\[[^]]*remastered[^]]*\]',
+    r'\s*\([^)]*acoustic[^)]*\)', r'\s*\[[^]]*acoustic[^]]*\]',
+    r'\s*\([^)]*remix[^)]*\)', r'\s*\[[^]]*remix[^]]*\]',
+    # Pattern semplici per tag esatti
     r'\s*\(edit\)', r'\s*\[edit\]',
-    r'\s*\(instrumental.*?\)', r'\s*\[instrumental.*?\]',
-    r'\s*\(unplugged.*?\)', r'\s*\[unplugged.*?\]',
     r'\s*\(mono\)', r'\s*\[mono\]',
     r'\s*\(stereo\)', r'\s*\[stereo\]',
-    r'\s*\(clean\)', r'\s*\[clean\]', # Potrebbe sovrapporsi con quelli di pulizia nome file
+    r'\s*\(clean\)', r'\s*\[clean\]',
     r'\s*\(explicit\)', r'\s*\[explicit\]',
-    # Pattern che includono anni, spesso usati per remaster/riedizioni
-    r'\s*\(\d{4}\s*(version|mix|edit|remaster)\)', 
-    r'\s*\[\\d{4}\s*(version|mix|edit|remaster)\]',
 ]
 
 def _default_logger(messaggio, flush=True):
@@ -511,6 +512,11 @@ def avvia_gestione_duplicati(cartella_musicale_path_abs: Path, cartella_duplicat
     # La logica di sposta_file_da_verificare prenderà i percorsi da file_mantenuti_post_duplicati
     # e li sposterà DALLA LORO POSIZIONE ATTUALE (nella libreria musicale originale)
     # ALLA cartella_da_verificare_path_abs.
+
+    # ---- CORREZIONE BUG CRITICO: Chiamare `sposta_duplicati` e catturare i file mantenuti ----
+    contatore_spostati, file_mantenuti_post_duplicati = sposta_duplicati(brani_identificati, cartella_duplicati_path_abs, logger)
+    # -----------------------------------------------------------------------------------------
+
     sposta_file_da_verificare(file_mantenuti_post_duplicati, cartella_da_verificare_path_abs, logger)
 
     logger("\nOperazione completata.")
