@@ -5,7 +5,9 @@ import re
 from pathlib import Path
 from mutagen.easyid3 import EasyID3
 from mutagen import MutagenError
-from collections import defaultdict # Aggiunto per raggruppare i file da verificare
+from collections import defaultdict
+from dataclasses import dataclass
+from typing import Optional, List, Dict, Tuple, Set
 
 VIDEO_PATTERNS = [
     r'\(official video\)', r'\[official video\]',
@@ -39,8 +41,73 @@ VERSION_PATTERNS = [
     r'\s*\(explicit\)', r'\s*\[explicit\]',
 ]
 
+@dataclass
+class MusicFile:
+    """Rappresenta un singolo file musicale e i suoi metadati."""
+    path: Path
+    artista_norm: str
+    titolo_norm: str
+    titolo_base_norm: str
+    tag_versione: Optional[str]
+    dimensione: int
+    sorgente_info: str
+
+
 def _default_logger(messaggio, flush=True):
     print(messaggio, flush=flush)
+
+
+def _estrai_info_file(file_path: Path, logger=_default_logger) -> Optional[MusicFile]:
+    """
+    Estrae, normalizza e struttura le informazioni di un singolo file musicale.
+    Restituisce un oggetto MusicFile o None se le informazioni sono insufficienti.
+    """
+    # 1. Estrazione Raw
+    titolo_id3_raw, artista_id3_raw = estrai_info_id3(file_path)
+    artista_nomefile_raw, titolo_nomefile_raw = estrai_info_da_nome_file(file_path.stem)
+
+    artista_finale, titolo_finale, sorgente_info = None, None, "Nessuna"
+
+    if artista_id3_raw and titolo_id3_raw:
+        artista_finale = artista_id3_raw
+        titolo_finale = titolo_id3_raw
+        sorgente_info = "ID3"
+    elif artista_nomefile_raw and titolo_nomefile_raw:
+        artista_finale = artista_nomefile_raw
+        titolo_finale = titolo_nomefile_raw
+        sorgente_info = "Nome File"
+    else:
+        logger(f"    Info insufficienti (ID3/Nome File) per: {file_path.name}")
+        return None
+
+    # 2. Normalizzazione
+    artista_normalizzato = normalizza_testo(artista_finale)
+    titolo_normalizzato = normalizza_testo(titolo_finale)
+
+    if not (artista_normalizzato and titolo_normalizzato):
+        logger(f"    Info insufficienti post-normalizzazione per: {file_path.name}")
+        return None
+
+    # 3. Estrazione Titolo Base e Versione
+    titolo_base, tag_versione = estrai_titolo_base_e_versione(titolo_normalizzato, logger)
+
+    # 4. Recupero Metadati Aggiuntivi
+    try:
+        dimensione = file_path.stat().st_size
+    except FileNotFoundError:
+        logger(f"    ATTENZIONE: File {file_path.name} non trovato durante lettura dimensione.")
+        return None
+
+    return MusicFile(
+        path=file_path,
+        artista_norm=artista_normalizzato,
+        titolo_norm=titolo_normalizzato,
+        titolo_base_norm=titolo_base,
+        tag_versione=tag_versione,
+        dimensione=dimensione,
+        sorgente_info=sorgente_info
+    )
+
 
 def normalizza_testo(testo):
     """Normalizza il testo per il confronto: minuscolo, trim, rimozione punteggiatura base."""
@@ -141,318 +208,213 @@ def estrai_info_id3(file_path):
     except Exception:
         return None, None
 
-def scansiona_cartella(cartella_path, cartella_non_conformi_path, logger=_default_logger, progress_callback=None):
-    """Scansiona la cartella, sposta i file video e raccoglie info sui file audio."""
-    file_musicali_info = {}
-    file_supportati = ['.mp3'] # Mantenere come lista per future estensioni
+def scansiona_cartella(cartella_path: Path, cartella_non_conformi_path: Path, logger=_default_logger, progress_callback=None) -> Tuple[List[MusicFile], int]:
+    """
+    Scansiona la cartella, sposta i file video/non-conformi e restituisce una lista
+    di oggetti MusicFile per i file audio validi.
+    """
+    file_musicali_validi: List[MusicFile] = []
+    file_supportati = ['.mp3']
     contatore_non_conformi = 0
-    contatore_file_audio_analizzati = 0 # Contatore specifico per file audio elaborati
+    contatore_file_audio_analizzati = 0
 
-    logger(f"Inizio pre-scansione per conteggio file audio in: {cartella_path}")
-    tutti_i_file_nella_cartella = list(cartella_path.rglob('*'))
+    logger(f"Inizio pre-scansione per conteggio file in: {cartella_path}")
+    # Usiamo un generatore per efficienza, ma lo convertiamo a lista per il conteggio
+    tutti_i_file_nella_cartella = list(cartella_path.rglob('*.*'))
     file_audio_da_elaborare_lista = [f for f in tutti_i_file_nella_cartella if f.is_file() and f.suffix.lower() in file_supportati]
     totale_file_audio_da_elaborare = len(file_audio_da_elaborare_lista)
     
     logger(f"Trovati {totale_file_audio_da_elaborare} file audio ({', '.join(file_supportati)}) da analizzare.")
-    logger(f"I file identificati come 'video' o non conformi verranno spostati in: {cartella_non_conformi_path}")
-    if totale_file_audio_da_elaborare == 0 and not any(identifica_come_video(f.stem) for f in tutti_i_file_nella_cartella if f.is_file()):
-        logger("Nessun file audio supportato trovato e nessun file video identificato. Termino la scansione.")
-        return file_musicali_info, contatore_non_conformi, 0, 0
+    logger(f"I file non audio o identificati come 'video' verranno spostati in: {cartella_non_conformi_path}")
 
-    # Ora iteriamo sulla lista pre-filtrata dei file audio e su tutti per i video
-    # Questo approccio è un po' inefficiente perché rglob potrebbe essere chiamato due volte indirettamente
-    # o filtriamo tutti i file. Per ora, privilegiamo la chiarezza del conteggio.
+    if not tutti_i_file_nella_cartella:
+        logger("Nessun file trovato nella cartella. Termino la scansione.")
+        return [], 0
+
+    for file_path in tutti_i_file_nella_cartella:
+        if not file_path.is_file():
+            continue
+
+        # Fase 1: Identificazione e spostamento file non conformi/video
+        is_video = identifica_come_video(file_path.stem)
+        is_audio_supportato = file_path.suffix.lower() in file_supportati
+
+        if is_video or not is_audio_supportato:
+            if is_video:
+                logger(f"  -> Identificato come file di tipo video/non conforme: '{file_path.name}'")
+            else: # File non supportato
+                logger(f"  -> File non supportato, trattato come non conforme: '{file_path.name}'")
+
+            try:
+                nome_file_destinazione = cartella_non_conformi_path / file_path.name
+                counter = 1
+                while nome_file_destinazione.exists():
+                    nome_file_destinazione = cartella_non_conformi_path / f"{file_path.stem}_{counter}{file_path.suffix}"
+                    counter += 1
+                shutil.move(str(file_path), str(nome_file_destinazione))
+                logger(f"    -> Spostato in: {nome_file_destinazione}")
+                contatore_non_conformi += 1
+            except Exception as e:
+                logger(f"    ERRORE durante lo spostamento di {file_path.name}: {e}")
+            continue # Passa al file successivo
+
+        # Fase 2: Processamento file audio
+        contatore_file_audio_analizzati += 1
+        logger(f"\n  Analizzo file audio {contatore_file_audio_analizzati}/{totale_file_audio_da_elaborare} (Nome: {file_path.name})", flush=True)
+        if progress_callback:
+            progress_callback(contatore_file_audio_analizzati, totale_file_audio_da_elaborare)
+
+        info_file = _estrai_info_file(file_path, logger)
+        if info_file:
+            logger(f"    Normalizzati ({info_file.sorgente_info}): Artista='{info_file.artista_norm}', Titolo='{info_file.titolo_norm}'")
+            file_musicali_validi.append(info_file)
+        else:
+            # Il logger dentro _estrai_info_file ha già dato dettagli
+            logger(f"    File {file_path.name} scartato per info insufficienti.")
     
-    contatore_generale_file_processati = 0
-
-    for i, file_path in enumerate(tutti_i_file_nella_cartella):
-        contatore_generale_file_processati +=1 # Contatore per feedback generale, anche se non è un file audio
-
-        if file_path.is_file():
-            if file_path.suffix.lower() in file_supportati:
-                contatore_file_audio_analizzati += 1
-                logger(f"\n  Analizzo file audio {contatore_file_audio_analizzati}/{totale_file_audio_da_elaborare} (Nome: {file_path.name})", flush=True) # flush=True qui è utile
-                if progress_callback:
-                    progress_callback(contatore_file_audio_analizzati, totale_file_audio_da_elaborare)
-
-                # Se è un file audio, non può essere un video da spostare subito (la logica video è sotto)
-                # Questa parte rimane per i file audio
-                titolo_id3_raw, artista_id3_raw = estrai_info_id3(file_path)
-                titolo_nomefile_raw, artista_nomefile_raw = estrai_info_da_nome_file(file_path.stem)
-                titolo_finale, artista_finale, sorgente_info = None, None, "Nessuna"
-
-                if artista_id3_raw and titolo_id3_raw:
-                    artista_finale, titolo_finale, sorgente_info = artista_id3_raw, titolo_id3_raw, "ID3"
-                    logger(f"    Info da ID3: Artista='{artista_finale}', Titolo='{titolo_finale}'")
-                    if artista_nomefile_raw and titolo_nomefile_raw and (normalizza_testo(artista_id3_raw) != normalizza_testo(artista_nomefile_raw) or normalizza_testo(titolo_id3_raw) != normalizza_testo(titolo_nomefile_raw)):
-                        logger(f"      (Nome file suggerisce info diverse: Artista='{artista_nomefile_raw}', Titolo='{titolo_nomefile_raw}')")
-                elif artista_nomefile_raw and titolo_nomefile_raw:
-                    artista_finale, titolo_finale, sorgente_info = artista_nomefile_raw, titolo_nomefile_raw, "Nome File"
-                    logger(f"    Info da Nome File (ID3 mancanti/incompleti): Artista='{artista_finale}', Titolo='{titolo_finale}'")
-                else:
-                    logger(f"    Info insufficienti da ID3 e Nome File per: {file_path.name} per classificazione audio.")
-                    if artista_id3_raw or titolo_id3_raw: logger(f"      (ID3 parziali: Artista='{artista_id3_raw}', Titolo='{titolo_id3_raw}')")
-                    if artista_nomefile_raw or titolo_nomefile_raw: logger(f"      (Nome file parziali: Artista='{artista_nomefile_raw}', Titolo='{titolo_nomefile_raw}')")
-                    continue # Prossimo file audio
-            
-                artista_normalizzato = normalizza_testo(artista_finale)
-                titolo_normalizzato = normalizza_testo(titolo_finale)
-
-                if artista_normalizzato and titolo_normalizzato and artista_normalizzato != "" and titolo_normalizzato != "":
-                    logger(f"    Normalizzati ({sorgente_info}): Artista='{artista_normalizzato}', Titolo='{titolo_normalizzato}'")
-                    chiave_brano = (artista_normalizzato, titolo_normalizzato)
-                    if chiave_brano not in file_musicali_info:
-                        file_musicali_info[chiave_brano] = []
-                    file_musicali_info[chiave_brano].append(str(file_path))
-                else:
-                    logger(f"    Info insufficienti dopo normalizzazione per: {file_path.name} (Artista: '{artista_normalizzato}', Titolo: '{titolo_normalizzato}')")
-            
-            # Gestione file video (potrebbe essere un file non audio o anche un file audio che matcha i pattern video)
-            # Questa logica viene eseguita per TUTTI i file, inclusi quelli già processati come audio.
-            # Dobbiamo assicurarci che un file audio non venga spostato come video se è già stato aggiunto a file_musicali_info.
-            # Tuttavia, la logica attuale di `identifica_come_video` e il `continue` nello script originale 
-            # facevano sì che un file identificato come video venisse spostato e basta.
-            # Manteniamo quel comportamento: se è video, è solo video.
-            if identifica_come_video(file_path.stem):
-                # Se un file audio è stato appena processato e aggiunto a file_musicali_info
-                # e ORA viene identificato come video, dobbiamo rimuoverlo da file_musicali_info.
-                # Questo scenario è meno probabile se VIDEO_PATTERNS è ben distinto da nomi di file audio validi.
-                chiave_da_rimuovere = None
-                for chiave, lista_path in file_musicali_info.items():
-                    if str(file_path) in lista_path:
-                        logger(f"    ATTENZIONE: Il file {file_path.name} era stato considerato audio ma ora è identificato come video. Verrà rimosso dall'analisi duplicati audio.")
-                        lista_path.remove(str(file_path))
-                        if not lista_path: # se la lista diventa vuota
-                            chiave_da_rimuovere = chiave
-                        break
-                if chiave_da_rimuovere:
-                    del file_musicali_info[chiave_da_rimuovere]
-                    # Non decrementare contatore_file_audio_analizzati perché era stato contato come audio prima
-
-                logger(f"    -> Identificato come file di tipo video/non conforme: '{file_path.name}'")
-                try:
-                    nome_file_destinazione = cartella_non_conformi_path / file_path.name
-                    counter = 1
-                    while nome_file_destinazione.exists():
-                        nome_file_destinazione = cartella_non_conformi_path / f"{file_path.stem}_{counter}{file_path.suffix}"
-                        counter += 1
-                    shutil.move(str(file_path), str(nome_file_destinazione))
-                    logger(f"    -> Spostato in: {nome_file_destinazione}")
-                    contatore_non_conformi += 1
-                except Exception as e:
-                    logger(f"    ERRORE durante lo spostamento di {file_path.name} in {cartella_non_conformi_path}: {e}")
-                # Non fare continue qui se era un file audio, perché il progress callback deve averlo contato.
-                # Ma se era un file audio e viene spostato come video, non dovrebbe più essere nei duplicati audio.
-                # La rimozione da file_musicali_info gestisce questo.
-    
-    logger(f"\nScansione file completata. Analizzati {contatore_file_audio_analizzati} file audio effettivi su {totale_file_audio_da_elaborare} trovati.")
+    logger(f"\nScansione file completata. Analizzati {contatore_file_audio_analizzati} file audio.")
     if contatore_non_conformi > 0:
-        logger(f"Spostati {contatore_non_conformi} file non conformi/video in '{cartella_non_conformi_path}'.")
+        logger(f"Spostati {contatore_non_conformi} file non conformi in '{cartella_non_conformi_path}'.")
     else:
-        logger("Nessun file non conforme/video è stato spostato.")
-    return file_musicali_info, contatore_non_conformi, contatore_file_audio_analizzati, totale_file_audio_da_elaborare
+        logger("Nessun file non conforme è stato spostato.")
 
-def sposta_duplicati(brani_identificati, cartella_duplicati_path, logger=_default_logger):
-    """Sposta i file duplicati, mantenendo quello con la dimensione maggiore."""
+    return file_musicali_validi, contatore_non_conformi
+
+def sposta_duplicati(file_musicali: List[MusicFile], cartella_duplicati_path: Path, logger=_default_logger) -> Tuple[int, Set[MusicFile]]:
+    """
+    Analizza una lista di MusicFile, sposta i duplicati e restituisce i file mantenuti.
+    Mantiene il file con la dimensione maggiore per ogni gruppo di duplicati.
+    """
     logger("\n--- Inizio Gestione Duplicati Audio ---")
     contatore_spostati = 0
-    for (artista, titolo), files_originali in brani_identificati.items():
-        if len(files_originali) > 1:
-            logger(f"Brano: Artista='{artista}', Titolo='{titolo}' - Trovati {len(files_originali)} file.")
-            
-            file_da_mantenere = None
-            dimensione_massima = -1
+    file_mantenuti: Set[MusicFile] = set()
 
-            # Converti i percorsi stringa in oggetti Path per facilitare l'accesso alle proprietà
-            files = [Path(f) for f in files_originali]
+    # 1. Raggruppa i file per (artista, titolo)
+    brani_identificati: Dict[Tuple[str, str], List[MusicFile]] = defaultdict(list)
+    for mf in file_musicali:
+        chiave_brano = (mf.artista_norm, mf.titolo_norm)
+        brani_identificati[chiave_brano].append(mf)
 
-            # Trova il file con la dimensione maggiore
-            for file_path_obj in files:
-                try:
-                    dimensione_file = file_path_obj.stat().st_size
-                    logger(f"  - File: {file_path_obj.name}, Dimensione: {dimensione_file} bytes")
-                    if dimensione_file > dimensione_massima:
-                        dimensione_massima = dimensione_file
-                        file_da_mantenere = file_path_obj
-                except FileNotFoundError:
-                    logger(f"    ATTENZIONE: File {file_path_obj} non trovato durante il controllo della dimensione. Sarà ignorato.")
-                    continue # Passa al prossimo file se questo non esiste più
-            
-            if file_da_mantenere:
-                logger(f"    -> Mantenuto: {file_da_mantenere.name} (Dimensione: {dimensione_massima} bytes)")
-                # Sposta gli altri file
-                for file_path_obj in files:
-                    if file_path_obj != file_da_mantenere:
-                        try:
-                            nome_file_destinazione = cartella_duplicati_path / file_path_obj.name
-                            # Gestione di eventuali conflitti di nomi nella cartella duplicati
-                            counter = 1
-                            while nome_file_destinazione.exists():
-                                nome_file_destinazione = cartella_duplicati_path / f"{file_path_obj.stem}_{counter}{file_path_obj.suffix}"
-                                counter += 1
-                            
-                            shutil.move(str(file_path_obj), str(nome_file_destinazione))
-                            logger(f"    -> Spostato: {file_path_obj.name} in {cartella_duplicati_path}")
-                            contatore_spostati += 1
-                        except FileNotFoundError:
-                             logger(f"    ATTENZIONE: File {file_path_obj.name} non trovato durante tentativo di spostamento.")
-                        except Exception as e:
-                            logger(f"    ERRORE durante lo spostamento di {file_path_obj.name}: {e}")
-            else:
-                logger(f"    ATTENZIONE: Non è stato possibile determinare un file da mantenere per {artista} - {titolo}. Nessun file spostato.")
+    # 2. Itera sui gruppi per trovare e spostare i duplicati
+    for (artista, titolo), files_in_gruppo in brani_identificati.items():
+        if len(files_in_gruppo) == 1:
+            file_mantenuti.add(files_in_gruppo[0])
+            continue
+
+        logger(f"Brano: Artista='{artista}', Titolo='{titolo}' - Trovati {len(files_in_gruppo)} file.")
+
+        file_da_mantenere: Optional[MusicFile] = None
+        dimensione_massima = -1
+
+        # Trova il file con la dimensione maggiore
+        for mf in files_in_gruppo:
+            logger(f"  - File: {mf.path.name}, Dimensione: {mf.dimensione} bytes")
+            if mf.dimensione > dimensione_massima:
+                dimensione_massima = mf.dimensione
+                file_da_mantenere = mf
         
+        if file_da_mantenere:
+            file_mantenuti.add(file_da_mantenere)
+            logger(f"    -> Mantenuto: {file_da_mantenere.path.name} (Dimensione: {dimensione_massima} bytes)")
+
+            # Sposta gli altri file
+            for mf_da_spostare in files_in_gruppo:
+                if mf_da_spostare != file_da_mantenere:
+                    try:
+                        nome_file_destinazione = cartella_duplicati_path / mf_da_spostare.path.name
+                        counter = 1
+                        while nome_file_destinazione.exists():
+                            nome_file_destinazione = cartella_duplicati_path / f"{mf_da_spostare.path.stem}_{counter}{mf_da_spostare.path.suffix}"
+                            counter += 1
+
+                        shutil.move(str(mf_da_spostare.path), str(nome_file_destinazione))
+                        logger(f"    -> Spostato: {mf_da_spostare.path.name} in {cartella_duplicati_path}")
+                        contatore_spostati += 1
+                    except FileNotFoundError:
+                         logger(f"    ATTENZIONE: File {mf_da_spostare.path.name} non trovato durante tentativo di spostamento.")
+                    except Exception as e:
+                        logger(f"    ERRORE durante lo spostamento di {mf_da_spostare.path.name}: {e}")
+        else:
+            logger(f"    ATTENZIONE: Non è stato possibile determinare un file da mantenere per '{artista} - {titolo}'. Nessun file spostato.")
+            # In questo caso, per sicurezza, consideriamo tutti i file del gruppo come "mantenuti" per ora
+            file_mantenuti.update(files_in_gruppo)
+
     logger("\n--- Gestione Duplicati Audio Completata ---")
     if contatore_spostati > 0:
         logger(f"Spostati {contatore_spostati} file audio duplicati in '{cartella_duplicati_path}'.")
     else:
         logger("Nessun file audio duplicato è stato spostato.")
-    # Restituiamo l'elenco dei file che sono stati mantenuti (non spostati come duplicati)
-    file_mantenuti = set()
-    for _, files_originali in brani_identificati.items():
-        if not files_originali: continue
-        files_obj = [Path(f) for f in files_originali]
-        if len(files_obj) == 1:
-            file_mantenuti.add(str(files_obj[0])) # Unico file, quindi mantenuto
-        elif len(files_obj) > 1:
-            # Identifica di nuovo il file da mantenere basato sulla dimensione
-            # Questa logica è duplicata da sopra, potrebbe essere rifattorizzata
-            file_da_mantenere_obj = None
-            dimensione_massima = -1
-            for file_path_obj in files_obj:
-                try:
-                    dimensione_file = file_path_obj.stat().st_size
-                    if dimensione_file > dimensione_massima:
-                        dimensione_massima = dimensione_file
-                        file_da_mantenere_obj = file_path_obj
-                except FileNotFoundError:
-                    continue # Ignora se non trovato
-            if file_da_mantenere_obj:
-                file_mantenuti.add(str(file_da_mantenere_obj))
+
     return contatore_spostati, file_mantenuti
 
-def sposta_file_da_verificare(file_da_considerare, cartella_base_da_verificare_path, logger=_default_logger):
+def sposta_file_da_verificare(file_da_considerare: Set[MusicFile], cartella_base_da_verificare_path: Path, logger=_default_logger) -> int:
     """
-    Analizza i file specificati (presumibilmente quelli non spostati come duplicati o non conformi)
-    per identificare gruppi di versioni dello stesso brano e li sposta in una sottocartella DA_VERIFICARE.
+    Analizza un set di MusicFile, identifica gruppi di versioni dello stesso brano
+    e li sposta in una sottocartella DA_VERIFICARE per revisione manuale.
     """
     logger("\n--- Inizio Analisi per File DA VERIFICARE ---")
     if not file_da_considerare:
         logger("Nessun file candidato per l'analisi DA VERIFICARE.")
         return 0
 
-    brani_con_versioni = defaultdict(lambda: {'artista_norm': None, 'titolo_base': None, 'files': []})
-    file_processati_per_versione = set() # Per evitare di processare due volte lo stesso file originale
+    # 1. Raggruppa per (artista_norm, titolo_base)
+    logger("Fase 1: Raggruppamento per artista e titolo base...")
+    brani_per_base: Dict[Tuple[str, str], List[MusicFile]] = defaultdict(list)
+    for mf in file_da_considerare:
+        chiave_base = (mf.artista_norm, mf.titolo_base_norm)
+        brani_per_base[chiave_base].append(mf)
 
-    # 1. Estrai info, normalizza e identifica titolo base per ogni file
-    logger("Fase 1: Estrazione info e identificazione titolo base...")
-    temp_info_file = [] # Lista di tuple (path_originale, artista_norm, titolo_norm, titolo_base, tag_versione)
-    
-    for file_path_str in file_da_considerare:
-        file_path = Path(file_path_str)
-        if not file_path.exists() or not file_path.is_file(): # Controllo extra
-            logger(f"  File {file_path.name} non trovato o non è un file, skippo per DA VERIFICARE.")
-            continue
-
-        #logger(f"  Considero per DA VERIFICARE: {file_path.name}")
-        titolo_id3, artista_id3 = estrai_info_id3(file_path)
-        titolo_fn, artista_fn = estrai_info_da_nome_file(file_path.stem)
-
-        artista_finale, titolo_finale = None, None
-        if artista_id3 and titolo_id3:
-            artista_finale, titolo_finale = artista_id3, titolo_id3
-        elif artista_fn and titolo_fn:
-            artista_finale, titolo_finale = artista_fn, titolo_fn
-        else:
-            #logger(f"    Info insufficienti (artista/titolo) per {file_path.name}. Skippato per DA VERIFICARE.")
-            continue
-            
-        artista_normalizzato = normalizza_testo(artista_finale)
-        titolo_normalizzato = normalizza_testo(titolo_finale)
-
-        if not (artista_normalizzato and titolo_normalizzato):
-            #logger(f"    Info insufficienti post-normalizzazione per {file_path.name}. Skippato.")
-            continue
-
-        titolo_base, tag_versione = estrai_titolo_base_e_versione(titolo_normalizzato, logger)
-        temp_info_file.append({
-            "path_originale": file_path,
-            "artista_norm": artista_normalizzato,
-            "titolo_norm": titolo_normalizzato, # Titolo completo normalizzato
-            "titolo_base": titolo_base,         # Titolo senza tag versione
-            "tag_versione": tag_versione       # Es. "(live)", "(remix)"
-        })
-
-    # 2. Raggruppa per (artista_norm, titolo_base)
-    logger("Fase 2: Raggruppamento per artista e titolo base...")
-    brani_per_base = defaultdict(list)
-    for info in temp_info_file:
-        chiave_base = (info["artista_norm"], info["titolo_base"])
-        brani_per_base[chiave_base].append(info)
-
-    # 3. Identifica i gruppi che necessitano verifica (più di un file per titolo base o un file con versione esplicita)
-    #    e sposta i file relativi
+    # 2. Identifica i gruppi che necessitano verifica e sposta i file
     contatore_spostati_da_verificare = 0
-    file_effettivamente_spostati_o_da_non_toccare_piu = set()
+    logger("Fase 2: Identificazione gruppi da verificare e spostamento...")
 
-    logger("Fase 3: Identificazione gruppi da verificare e spostamento...")
-    if not cartella_base_da_verificare_path.exists():
-        try:
-            cartella_base_da_verificare_path.mkdir(parents=True, exist_ok=True)
-            logger(f"Creata cartella DA_VERIFICARE base: {cartella_base_da_verificare_path}")
-        except OSError as e:
-            logger(f"ERRORE: Impossibile creare la cartella DA_VERIFICARE base '{cartella_base_da_verificare_path}': {e}. La funzionalità DA VERIFICARE sarà saltata.")
-            return 0
+    # Assicurarsi che la cartella base esista
+    try:
+        cartella_base_da_verificare_path.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        logger(f"ERRORE: Impossibile creare la cartella DA_VERIFICARE base '{cartella_base_da_verificare_path}': {e}. Funzionalità saltata.")
+        return 0
 
-    for (artista_norm, titolo_b), lista_info_brani in brani_per_base.items():
-        if len(lista_info_brani) > 1: # Trovate più versioni (o l'originale + versioni)
-            logger(f"  Gruppo DA VERIFICARE per Artista='{artista_norm}', Titolo Base='{titolo_b}' ({len(lista_info_brani)} file):")
+    for (artista_norm, titolo_base), lista_brani in brani_per_base.items():
+        if len(lista_brani) > 1:
+            logger(f"  Gruppo DA VERIFICARE per Artista='{artista_norm}', Titolo Base='{titolo_base}' ({len(lista_brani)} file):")
             
             # Crea una sottocartella specifica per questo gruppo
-            # Pulisci artista e titolo base per usarli come nomi di cartelle
-            nome_cartella_artista = "".join(c if c.isalnum() or c in (' ', '_') else '_' for c in artista_norm).strip() or "ArtistaSconosciuto"
-            nome_cartella_titolo = "".join(c if c.isalnum() or c in (' ', '_') else '_' for c in titolo_b).strip() or "TitoloSconosciuto"
+            nome_cartella_artista = "".join(c for c in artista_norm if c.isalnum() or c in (' ', '_')).strip() or "ArtistaSconosciuto"
+            nome_cartella_titolo = "".join(c for c in titolo_base if c.isalnum() or c in (' ', '_')).strip() or "TitoloSconosciuto"
             
             cartella_destinazione_gruppo = cartella_base_da_verificare_path / nome_cartella_artista / nome_cartella_titolo
             try:
                 cartella_destinazione_gruppo.mkdir(parents=True, exist_ok=True)
             except OSError as e:
-                logger(f"    ERRORE: Impossibile creare sottocartella DA_VERIFICARE '{cartella_destinazione_gruppo}': {e}. Skippo questo gruppo.")
+                logger(f"    ERRORE: Impossibile creare sottocartella '{cartella_destinazione_gruppo}': {e}. Skippo questo gruppo.")
                 continue
 
-            for info_brano in lista_info_brani:
-                file_path_originale = info_brano["path_originale"]
-                logger(f"    - '{info_brano['titolo_norm']}' (File: {file_path_originale.name})")
+            for mf_da_spostare in lista_brani:
+                logger(f"    - '{mf_da_spostare.titolo_norm}' (File: {mf_da_spostare.path.name})")
                 try:
-                    # Il nome del file nella destinazione rimane lo stesso del file originale
-                    nome_file_dest = cartella_destinazione_gruppo / file_path_originale.name
+                    nome_file_dest = cartella_destinazione_gruppo / mf_da_spostare.path.name
                     
-                    # Gestione conflitti (improbabile se i file sono già unici, ma per sicurezza)
                     counter = 1
-                    stem, suffix = file_path_originale.stem, file_path_originale.suffix
                     while nome_file_dest.exists():
-                        nome_file_dest = cartella_destinazione_gruppo / f"{stem}_{counter}{suffix}"
+                        nome_file_dest = cartella_destinazione_gruppo / f"{mf_da_spostare.path.stem}_{counter}{mf_da_spostare.path.suffix}"
                         counter += 1
                         
-                    shutil.move(str(file_path_originale), str(nome_file_dest))
+                    shutil.move(str(mf_da_spostare.path), str(nome_file_dest))
                     logger(f"      -> Spostato in: {nome_file_dest}")
                     contatore_spostati_da_verificare += 1
-                    file_effettivamente_spostati_o_da_non_toccare_piu.add(str(file_path_originale))
                 except FileNotFoundError:
-                    logger(f"      ATTENZIONE: File {file_path_originale.name} non trovato durante tentativo di spostamento in DA_VERIFICARE.")
+                    logger(f"      ATTENZIONE: File {mf_da_spostare.path.name} non trovato durante lo spostamento.")
                 except Exception as e:
-                    logger(f"      ERRORE durante lo spostamento di {file_path_originale.name} in DA_VERIFICARE: {e}")
-        # else:
-            # logger(f"  Gruppo con 1 solo file per Artista='{artista_norm}', Titolo Base='{titolo_b}'. Nessuna azione DA VERIFICARE.")
-            # # Aggiungiamo comunque il file a quelli "processati" per questa fase, così non viene ricontrollato
-            # file_effettivamente_spostati_o_da_non_toccare_piu.add(str(lista_info_brani[0]["path_originale"]))
-
+                    logger(f"      ERRORE durante lo spostamento di {mf_da_spostare.path.name}: {e}")
 
     logger("\n--- Analisi per File DA VERIFICARE Completata ---")
     if contatore_spostati_da_verificare > 0:
         logger(f"Spostati {contatore_spostati_da_verificare} file nella cartella '{cartella_base_da_verificare_path}' per revisione manuale.")
     else:
         logger("Nessun file è stato spostato nella cartella DA VERIFICARE.")
-    return contatore_spostati_da_verificare, file_effettivamente_spostati_o_da_non_toccare_piu
+
+    return contatore_spostati_da_verificare
 
 def avvia_gestione_duplicati(cartella_musicale_path_abs: Path, cartella_duplicati_path_abs: Path, cartella_non_conformi_path_abs: Path, cartella_da_verificare_path_abs: Path, logger=_default_logger, progress_callback=None):
     """
@@ -468,58 +430,44 @@ def avvia_gestione_duplicati(cartella_musicale_path_abs: Path, cartella_duplicat
         logger(f"Errore: La cartella musicale '{cartella_musicale_path_abs}' non esiste o non è una directory.")
         return
 
-    # Crea le cartelle di destinazione se non esistono
-    # Questa logica è già assunta essere gestita da chi chiama avvia_gestione_duplicati,
-    # ma una doppia verifica non fa male, specialmente per la GUI.
+    # Assicura che le cartelle di destinazione esistano
     for p in [cartella_duplicati_path_abs, cartella_non_conformi_path_abs, cartella_da_verificare_path_abs]:
         try:
             p.mkdir(parents=True, exist_ok=True)
-            logger(f"Assicurata esistenza cartella: {p}")
         except OSError as e:
-            logger(f"Errore durante la creazione o verifica della cartella '{p}': {e}")
+            logger(f"Errore critico durante la creazione della cartella '{p}': {e}")
             return
     
-    logger("\nInizio scansione...")
-    # Modifica per ricevere i nuovi valori da scansiona_cartella
-    risultato_scansione = scansiona_cartella(cartella_musicale_path_abs, cartella_non_conformi_path_abs, logger, progress_callback)
-    brani_identificati = risultato_scansione[0]
-    # contatore_non_conformi_restituito = risultato_scansione[1]
-    # contatore_audio_analizzati_restituito = risultato_scansione[2]
-    # totale_audio_restituito = risultato_scansione[3]
+    # 1. Scansiona la cartella, sposta i non conformi e ottieni una lista di file audio validi
+    logger("\n--- Fase 1: Scansione e Analisi File ---")
+    file_musicali_validi, _ = scansiona_cartella(
+        cartella_musicale_path_abs,
+        cartella_non_conformi_path_abs,
+        logger,
+        progress_callback
+    )
 
-    logger("\n--- Riepilogo Brani Audio Identificati (pre-duplicati) ---")
-    if not brani_identificati:
-        logger("Nessun brano audio identificato per l'analisi dei duplicati.")
-    else:
-        for (artista, titolo), files in brani_identificati.items():
-            logger(f"Brano: Artista='{artista}', Titolo='{titolo}'")
-            for f_path in files:
-                logger(f"  - File: {Path(f_path).name} (Percorso: {f_path})")
-            if len(files) > 1:
-                logger(f"    -> TROVATI {len(files)} file per questo brano (potenziali duplicati)")
+    if not file_musicali_validi:
+        logger("Nessun file audio valido trovato da processare. Operazione completata.")
+        return
 
-    # Colleziona tutti i file originali prima della gestione duplicati
-    tutti_i_file_audio_originali_scannerizzati = set()
-    for _, files_list in brani_identificati.items():
-        for f_path_str in files_list:
-            tutti_i_file_audio_originali_scannerizzati.add(f_path_str)
+    # 2. Sposta i duplicati esatti e ottieni la lista dei file unici mantenuti
+    logger("\n--- Fase 2: Gestione Duplicati Esatti ---")
+    _, file_mantenuti_post_duplicati = sposta_duplicati(
+        file_musicali_validi,
+        cartella_duplicati_path_abs,
+        logger
+    )
 
-    # Ora, i file in 'file_mantenuti_post_duplicati' sono quelli che NON sono stati spostati in DOPPIONI.
-    # Questi sono i candidati per l'analisi "DA VERIFICARE".
-    # Dobbiamo essere sicuri che questi file esistano ancora e non siano stati spostati come "NON CONFORMI".
-    # I file non conformi sono già stati gestiti in scansiona_cartella e non dovrebbero essere in brani_identificati.
-    
-    # La logica di sposta_file_da_verificare prenderà i percorsi da file_mantenuti_post_duplicati
-    # e li sposterà DALLA LORO POSIZIONE ATTUALE (nella libreria musicale originale)
-    # ALLA cartella_da_verificare_path_abs.
+    # 3. Analizza i file rimasti per raggruppare e spostare le diverse versioni
+    logger("\n--- Fase 3: Gestione Versioni Multiple (DA VERIFICARE) ---")
+    sposta_file_da_verificare(
+        file_mantenuti_post_duplicati,
+        cartella_da_verificare_path_abs,
+        logger
+    )
 
-    # ---- CORREZIONE BUG CRITICO: Chiamare `sposta_duplicati` e catturare i file mantenuti ----
-    contatore_spostati, file_mantenuti_post_duplicati = sposta_duplicati(brani_identificati, cartella_duplicati_path_abs, logger)
-    # -----------------------------------------------------------------------------------------
-
-    sposta_file_da_verificare(file_mantenuti_post_duplicati, cartella_da_verificare_path_abs, logger)
-
-    logger("\nOperazione completata.")
+    logger("\n--- Operazione Completata ---")
 
 def main_cli():
     parser = argparse.ArgumentParser(description="Identifica e sposta i file musicali duplicati e non conformi.")
