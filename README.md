@@ -1,4 +1,4 @@
-# Gestore Duplicati Musicali
+# TuneUp
 
 Un'applicazione desktop per analizzare una libreria musicale, identificare file duplicati, versioni multiple dello stesso brano e file non conformi, e aiutare l'utente a fare ordine.
 
@@ -6,7 +6,7 @@ Un'applicazione desktop per analizzare una libreria musicale, identificare file 
 
 ## Descrizione
 
-Questo strumento è progettato per chi ha grandi collezioni di file MP3 e desidera:
+**TuneUp** è progettato per chi ha grandi collezioni di file MP3 e desidera:
 - **Liberare spazio**: Trovando e spostando i file musicali duplicati.
 - **Fare ordine**: Separando file di bassa qualità o estratti da video.
 - **Organizzare le versioni**: Raggruppando diverse versioni dello stesso brano (es. Live, Remix, Acoustic) in cartelle dedicate per una facile revisione.

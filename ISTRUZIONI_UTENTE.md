@@ -1,10 +1,10 @@
-# Manuale d'Uso: Gestore Duplicati Musicali
+# Manuale d'Uso: TuneUp
 
-Questo documento ti guiderà passo passo all'utilizzo dell'applicazione `Gestore Duplicati Musicali` tramite la sua interfaccia grafica.
+Questo documento ti guiderà passo passo all'utilizzo dell'applicazione `TuneUp` tramite la sua interfaccia grafica.
 
 ## A Cosa Serve Questo Programma?
 
-Questo programma ti aiuta a fare ordine nella tua collezione di musica digitale (file MP3). Svolge tre compiti principali:
+**TuneUp** ti aiuta a fare ordine nella tua collezione di musica digitale (file MP3). Svolge tre compiti principali:
 
 1.  **Pulisce i file "spazzatura"**: Sposta in una cartella apposita i file che non sono vere e proprie canzoni, come l'audio scaricato da video musicali o formati non supportati.
 2.  **Elimina i duplicati**: Trova le canzoni identiche, tiene solo la versione migliore (quella che occupa più spazio, quindi di qualità superiore) e sposta le altre copie.

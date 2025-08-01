@@ -1,6 +1,6 @@
 # Guida per Sviluppatori: Build e Test
 
-Questo documento fornisce le istruzioni tecniche per configurare l'ambiente di sviluppo, eseguire la suite di test e creare gli eseguibili standalone dell'applicazione `Gestore Duplicati Musicali`.
+Questo documento fornisce le istruzioni tecniche per configurare l'ambiente di sviluppo, eseguire la suite di test e creare gli eseguibili standalone dell'applicazione **TuneUp**.
 
 ## 1. Configurazione dell'Ambiente di Sviluppo
 
@@ -56,10 +56,10 @@ Il comando base per creare l'eseguibile si concentra sul file della GUI (`gui_ge
 -   `--onefile`: Crea un singolo file eseguibile.
 -   `--windowed`: Su Windows e macOS, previene l'apertura di una finestra del terminale in background quando si avvia l'applicazione grafica.
 -   `--name`: Specifica il nome dell'eseguibile.
--   `--icon`: Specifica un'icona per l'applicazione.
+-   `--icon`: Specifica un'icona per l'applicazione. **Nota**: PyInstaller richiede formati specifici per piattaforma (`.ico` per Windows, `.icns` per macOS). Il file `assets/icon.png` fornito dovrà essere convertito in questi formati.
 
 ```bash
-pyinstaller --name="GestoreDuplicatiMusicali" --onefile --windowed --icon="path/to/icon.ico" gui_gestore_musicale.py
+pyinstaller --name="TuneUp" --onefile --windowed --icon="assets/icon.ico" gui_gestore_musicale.py
 ```
 
 ### Istruzioni Specifiche per Piattaforma
@@ -67,20 +67,20 @@ pyinstaller --name="GestoreDuplicatiMusicali" --onefile --windowed --icon="path/
 **Importante**: La build deve essere eseguita sulla piattaforma di destinazione. Ad esempio, per creare un `.exe` per Windows, devi eseguire PyInstaller su una macchina Windows.
 
 #### **Windows**
-1.  Assicurati di avere un file icona in formato `.ico`.
+1.  Converti `assets/icon.png` in `assets/icon.ico` usando un tool online o un software di grafica.
 2.  Esegui il comando nel prompt dei comandi o PowerShell:
     ```bash
-    pyinstaller --name="GestoreDuplicatiMusicali" --onefile --windowed --icon="assets/icon.ico" gui_gestore_musicale.py
+    pyinstaller --name="TuneUp" --onefile --windowed --icon="assets/icon.ico" gui_gestore_musicale.py
     ```
-3.  L'eseguibile `GestoreDuplicatiMusicali.exe` si troverà nella cartella `dist`.
+3.  L'eseguibile `TuneUp.exe` si troverà nella cartella `dist`.
 
 #### **macOS**
-1.  Assicurati di avere un file icona in formato `.icns`.
+1.  Converti `assets/icon.png` in `assets/icon.icns` usando un tool online o l'utility `iconutil` di macOS.
 2.  Esegui il comando nel terminale:
     ```bash
-    pyinstaller --name="GestoreDuplicatiMusicali" --onefile --windowed --icon="assets/icon.icns" gui_gestore_musicale.py
+    pyinstaller --name="TuneUp" --onefile --windowed --icon="assets/icon.icns" gui_gestore_musicale.py
     ```
-3.  L'applicazione `GestoreDuplicatiMusicali.app` verrà creata nella cartella `dist`.
+3.  L'applicazione `TuneUp.app` verrà creata nella cartella `dist`.
 
 **Considerazioni per Apple Silicon (M1/M2/M3):**
 -   Se esegui il comando su un Mac con Apple Silicon, PyInstaller creerà nativamente un'applicazione per l'architettura `arm64`. Questa funzionerà al massimo delle prestazioni sui Mac moderni e sarà comunque eseguibile sui vecchi Mac Intel tramite l'emulatore Rosetta 2.
@@ -90,14 +90,14 @@ pyinstaller --name="GestoreDuplicatiMusicali" --onefile --windowed --icon="path/
 1.  Su Linux, l'opzione `--windowed` non ha sempre l'effetto desiderato e l'icona potrebbe non essere applicata direttamente all'eseguibile binario. La pratica comune è distribuire l'eseguibile insieme a un file `.desktop`.
 2.  Esegui il comando base (l'icona è opzionale qui ma può essere referenziata nel file `.desktop`):
     ```bash
-    pyinstaller --name="GestoreDuplicatiMusicali" --onefile gui_gestore_musicale.py
+    pyinstaller --name="TuneUp" --onefile gui_gestore_musicale.py
     ```
-3.  L'eseguibile `GestoreDuplicatiMusicali` si troverà nella cartella `dist`.
-4.  (Opzionale) Crea un file `gestore-duplicati-musicali.desktop` per una migliore integrazione con gli ambienti desktop:
+3.  L'eseguibile `TuneUp` si troverà nella cartella `dist`.
+4.  (Opzionale) Crea un file `tuneup.desktop` per una migliore integrazione con gli ambienti desktop:
     ```ini
     [Desktop Entry]
-    Name=Gestore Duplicati Musicali
-    Exec=/path/completo/alla/dist/GestoreDuplicatiMusicali
+    Name=TuneUp
+    Exec=/path/completo/alla/dist/TuneUp
     Icon=/path/completo/assets/icon.png
     Terminal=false
     Type=Application
@@ -108,5 +108,5 @@ pyinstaller --name="GestoreDuplicatiMusicali" --onefile --windowed --icon="path/
 Dopo la build, PyInstaller lascia una cartella `build` e un file `.spec`. Possono essere cancellati tranquillamente:
 ```bash
 rm -rf build
-rm GestoreDuplicatiMusicali.spec
+rm TuneUp.spec
 ```

@@ -106,8 +106,8 @@ class SplashScreen(ttk.Toplevel):
         frame = ttk.Frame(self, bootstyle="dark")
         frame.pack(expand=True, fill="both")
 
-        ttk.Label(frame, text="Gestore Duplicati Musicali", font=("Helvetica", 20, "bold"), bootstyle="inverse-dark").pack(pady=(40, 10))
-        ttk.Label(frame, text="Versione 1.0", font=("Helvetica", 10), bootstyle="inverse-dark").pack()
+        ttk.Label(frame, text="TuneUp", font=("Helvetica", 24, "bold"), bootstyle="inverse-dark").pack(pady=(40, 10))
+        ttk.Label(frame, text="Versione 2.0 \"Clarity\"", font=("Helvetica", 10), bootstyle="inverse-dark").pack()
         ttk.Label(frame, text="di Simone Pizzi", font=("Helvetica", 10, "italic"), bootstyle="inverse-dark").pack(pady=5)
 
         ttk.Label(frame, text="(C) 2025 Runtime Radio", font=("Helvetica", 8), bootstyle="secondary").pack(side="bottom", pady=10)
@@ -119,7 +119,7 @@ class SplashScreen(ttk.Toplevel):
 class AppGestoreMusicaleV0_1:
     def __init__(self, root_window):
         self.root = root_window
-        self.root.title("Gestore Duplicati Musicali v1.0")
+        self.root.title("TuneUp v2.0 \"Clarity\"")
         self.root.geometry("800x600")
 
         # Variabili di stato
