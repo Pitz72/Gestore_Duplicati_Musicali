@@ -91,9 +91,16 @@ Ogni volta che si apporta una modifica allo script `gestore_duplicati_musicali.p
         [ ] Si aggiorna dinamicamente durante la scansione dei file audio in `scansiona_cartella`.
         [ ] Raggiunge il 100% al completamento della scansione (o se non ci sono file audio).
     [ ] (Futuro) Il pulsante "Interrompi" (quando implementato) interrompe l'analisi in modo sicuro.
+    [ ] Finestra di Anteprima:
+        [ ] Se vengono pianificate delle azioni, la finestra di anteprima appare.
+        [ ] Se non ci sono azioni, appare un popup informativo e la finestra di anteprima non appare.
+        [ ] La tabella nella finestra di anteprima mostra correttamente Sorgente, Destinazione e Motivazione.
+        [ ] Il pulsante "Annulla" chiude la finestra e non esegue spostamenti.
+        [ ] Il pulsante "Esegui Spostamenti" esegue correttamente gli spostamenti e poi chiude la finestra.
+        [ ] I controlli nella finestra principale vengono disabilitati durante l'analisi e riabilitati dopo la chiusura della finestra di anteprima.
 
 NOTE AGGIUNTIVE PER LO SVILUPPATORE:
-*   Prima di un commit importante, eseguire lo script su una piccola cartella di test con casi noti (duplicati, non conformi, file senza ID3, file con nomi complessi) e verificare che l'output e gli spostamenti siano quelli attesi.
+*   Prima di un commit importante, eseguire i test automatici con `python -m pytest`.
+*   Eseguire lo script su una piccola cartella di test con casi noti (duplicati, non conformi, file senza ID3, file con nomi complessi) e verificare che l'output e gli spostamenti siano quelli attesi, specialmente tramite la GUI.
 *   Mantenere aggiornato il `log_sviluppo.txt` con le modifiche rilevanti.
-*   Se si modifica la logica di identificazione/normalizzazione, considerare l'impatto sui test esistenti e, se necessario, aggiornare questa checklist.
-*   Quando verrà sviluppata la GUI, creare una sezione apposita in questa checklist per le sue funzionalità chiave. 
+*   Se si modifica la logica di identificazione/normalizzazione, considerare l'impatto sui test esistenti e, se necessario, aggiornare questa checklist e creare nuovi test.

@@ -1,3 +1,4 @@
 mutagen
 pytest
 pytest-mock
+pyinstaller

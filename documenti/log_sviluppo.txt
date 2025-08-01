@@ -139,4 +139,28 @@ Versione 0.5 (Barra Progresso Precisa e Gestione Iniziale "DA VERIFICARE")
 
 Prossimi Passi Pianificati (ad alto livello):
 *   Aggiornamento completo della documentazione (descrizione progetto, checklist).
-*   Test approfonditi della funzionalità "DA VERIFICARE" su diverse librerie. 
+*   Test approfonditi della funzionalità "DA VERIFICARE" su diverse librerie.
+
+Versione 1.0 (Refactoring, Test e Anteprima Interattiva)
+---------------------------------------------------------
+*   **Fase 0: Correzione Bug Critico:**
+    *   Identificato e corretto un bug bloccante in `avvia_gestione_duplicati` dove la chiamata a `sposta_duplicati` era assente, impedendo di fatto la gestione di duplicati e file da verificare.
+*   **Fase 1: Fondamenta di Qualità e Test Automatici:**
+    *   Introdotto un file `requirements.txt` per gestire le dipendenze (`mutagen`, `pytest`).
+    *   Aggiunto il framework di test `pytest` e `pytest-mock`.
+    *   Creata una suite di test iniziale (`tests/test_logic.py`) per le funzioni di logica pura (normalizzazione, estrazione versione, etc.).
+    *   La scrittura dei test ha rivelato e permesso di correggere due bug nei `VERSION_PATTERNS` (pattern troppo specifici e un errore di escaping `\\d`).
+*   **Fase 2: Riforma Architetturale:**
+    *   Introdotto un `dataclass` `MusicFile` per una rappresentazione strutturata dei file musicali.
+    *   Rifattorizzate le funzioni monolitiche (`scansiona_cartella`, `sposta_duplicati`, `sposta_file_da_verificare`) in unità più piccole e focalizzate.
+    *   Aggiunti nuovi test (`tests/test_refactored_logic.py`) per la logica rifattorizzata usando `pytest-mock` per isolare le dipendenze esterne.
+    *   Il processo di test ha rivelato e permesso di correggere diversi bug sottili legati all'assegnazione di variabili e al corretto "patching" dei moduli.
+*   **Fase 3: Separazione Pianificazione/Esecuzione e GUI Interattiva:**
+    *   Introdotto un `dataclass` `SpostaFileAzione` per rappresentare le operazioni in modo dichiarativo.
+    *   La logica di business è stata separata in funzioni di "pianificazione" (che restituiscono una lista di azioni) e una funzione di "esecuzione" (`esegui_piano_azioni`).
+    *   Aggiunto un test di integrazione (`tests/test_integration.py`) per validare l'intero flusso end-to-end.
+    *   La GUI (`gui_gestore_musicale.py`) è stata modificata radicalmente:
+        *   Ora chiama la funzione di pianificazione.
+        *   Mostra una nuova finestra di anteprima (`PreviewWindow`) con una tabella (`ttk.Treeview`) che elenca tutte le azioni proposte.
+        *   L'utente ha il controllo finale e può decidere se eseguire gli spostamenti o annullare.
+*   Obiettivo: L'applicazione è ora stabile, testata, robusta e offre un'esperienza utente molto più sicura e controllata.
