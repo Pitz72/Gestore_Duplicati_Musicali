@@ -41,7 +41,7 @@ VERSION_PATTERNS = [
     r'\s*\(explicit\)', r'\s*\[explicit\]',
 ]
 
-@dataclass
+@dataclass(frozen=True)
 class MusicFile:
     """Rappresenta un singolo file musicale e i suoi metadati."""
     path: Path
@@ -51,6 +51,14 @@ class MusicFile:
     tag_versione: Optional[str]
     dimensione: int
     sorgente_info: str
+
+
+@dataclass(frozen=True)
+class SpostaFileAzione:
+    """Rappresenta una singola operazione di spostamento file."""
+    sorgente: Path
+    destinazione: Path
+    motivazione: str # Es. "Duplicato", "Versione da Verificare"
 
 
 def _default_logger(messaggio, flush=True):
@@ -220,7 +228,7 @@ def scansiona_cartella(cartella_path: Path, cartella_non_conformi_path: Path, lo
 
     logger(f"Inizio pre-scansione per conteggio file in: {cartella_path}")
     # Usiamo un generatore per efficienza, ma lo convertiamo a lista per il conteggio
-    tutti_i_file_nella_cartella = list(cartella_path.rglob('*.*'))
+    tutti_i_file_nella_cartella = list(cartella_path.rglob('*'))
     file_audio_da_elaborare_lista = [f for f in tutti_i_file_nella_cartella if f.is_file() and f.suffix.lower() in file_supportati]
     totale_file_audio_da_elaborare = len(file_audio_da_elaborare_lista)
     
@@ -280,141 +288,122 @@ def scansiona_cartella(cartella_path: Path, cartella_non_conformi_path: Path, lo
 
     return file_musicali_validi, contatore_non_conformi
 
-def sposta_duplicati(file_musicali: List[MusicFile], cartella_duplicati_path: Path, logger=_default_logger) -> Tuple[int, Set[MusicFile]]:
+def pianifica_spostamento_duplicati(file_musicali: List[MusicFile], cartella_duplicati_path: Path, logger=_default_logger) -> Tuple[List[SpostaFileAzione], Set[MusicFile]]:
     """
-    Analizza una lista di MusicFile, sposta i duplicati e restituisce i file mantenuti.
-    Mantiene il file con la dimensione maggiore per ogni gruppo di duplicati.
+    Analizza una lista di MusicFile e pianifica lo spostamento dei duplicati.
+    NON esegue lo spostamento, ma restituisce una lista di azioni da compiere.
     """
-    logger("\n--- Inizio Gestione Duplicati Audio ---")
-    contatore_spostati = 0
+    logger("\n--- Inizio Pianificazione Spostamento Duplicati ---")
+    azioni: List[SpostaFileAzione] = []
     file_mantenuti: Set[MusicFile] = set()
 
-    # 1. Raggruppa i file per (artista, titolo)
     brani_identificati: Dict[Tuple[str, str], List[MusicFile]] = defaultdict(list)
     for mf in file_musicali:
-        chiave_brano = (mf.artista_norm, mf.titolo_norm)
-        brani_identificati[chiave_brano].append(mf)
+        brani_identificati[(mf.artista_norm, mf.titolo_norm)].append(mf)
 
-    # 2. Itera sui gruppi per trovare e spostare i duplicati
     for (artista, titolo), files_in_gruppo in brani_identificati.items():
         if len(files_in_gruppo) == 1:
             file_mantenuti.add(files_in_gruppo[0])
             continue
 
-        logger(f"Brano: Artista='{artista}', Titolo='{titolo}' - Trovati {len(files_in_gruppo)} file.")
-
-        file_da_mantenere: Optional[MusicFile] = None
-        dimensione_massima = -1
-
-        # Trova il file con la dimensione maggiore
-        for mf in files_in_gruppo:
-            logger(f"  - File: {mf.path.name}, Dimensione: {mf.dimensione} bytes")
-            if mf.dimensione > dimensione_massima:
-                dimensione_massima = mf.dimensione
-                file_da_mantenere = mf
+        logger(f"Brano: Artista='{artista}', Titolo='{titolo}' - Trovati {len(files_in_gruppo)} file (potenziali duplicati).")
         
+        file_da_mantenere = max(files_in_gruppo, key=lambda mf: mf.dimensione, default=None)
+
         if file_da_mantenere:
             file_mantenuti.add(file_da_mantenere)
-            logger(f"    -> Mantenuto: {file_da_mantenere.path.name} (Dimensione: {dimensione_massima} bytes)")
+            logger(f"    -> Da Mantenere: {file_da_mantenere.path.name} (Dimensione: {file_da_mantenere.dimensione} bytes)")
 
-            # Sposta gli altri file
             for mf_da_spostare in files_in_gruppo:
                 if mf_da_spostare != file_da_mantenere:
-                    try:
-                        nome_file_destinazione = cartella_duplicati_path / mf_da_spostare.path.name
-                        counter = 1
-                        while nome_file_destinazione.exists():
-                            nome_file_destinazione = cartella_duplicati_path / f"{mf_da_spostare.path.stem}_{counter}{mf_da_spostare.path.suffix}"
-                            counter += 1
-
-                        shutil.move(str(mf_da_spostare.path), str(nome_file_destinazione))
-                        logger(f"    -> Spostato: {mf_da_spostare.path.name} in {cartella_duplicati_path}")
-                        contatore_spostati += 1
-                    except FileNotFoundError:
-                         logger(f"    ATTENZIONE: File {mf_da_spostare.path.name} non trovato durante tentativo di spostamento.")
-                    except Exception as e:
-                        logger(f"    ERRORE durante lo spostamento di {mf_da_spostare.path.name}: {e}")
+                    # La gestione di nomi duplicati nella destinazione verrà fatta dall'esecutore del piano
+                    destinazione_proposta = cartella_duplicati_path / mf_da_spostare.path.name
+                    azione = SpostaFileAzione(
+                        sorgente=mf_da_spostare.path,
+                        destinazione=destinazione_proposta,
+                        motivazione="Duplicato"
+                    )
+                    azioni.append(azione)
+                    logger(f"    -> Da Spostare: {mf_da_spostare.path.name} -> {destinazione_proposta}")
         else:
-            logger(f"    ATTENZIONE: Non è stato possibile determinare un file da mantenere per '{artista} - {titolo}'. Nessun file spostato.")
-            # In questo caso, per sicurezza, consideriamo tutti i file del gruppo come "mantenuti" per ora
+            logger(f"    ATTENZIONE: Non è stato possibile determinare un file da mantenere per '{artista} - {titolo}'.")
             file_mantenuti.update(files_in_gruppo)
 
-    logger("\n--- Gestione Duplicati Audio Completata ---")
-    if contatore_spostati > 0:
-        logger(f"Spostati {contatore_spostati} file audio duplicati in '{cartella_duplicati_path}'.")
-    else:
-        logger("Nessun file audio duplicato è stato spostato.")
+    logger(f"Pianificate {len(azioni)} azioni di spostamento per duplicati.")
+    return azioni, file_mantenuti
 
-    return contatore_spostati, file_mantenuti
-
-def sposta_file_da_verificare(file_da_considerare: Set[MusicFile], cartella_base_da_verificare_path: Path, logger=_default_logger) -> int:
+def pianifica_spostamento_da_verificare(file_da_considerare: Set[MusicFile], cartella_base_da_verificare_path: Path, logger=_default_logger) -> List[SpostaFileAzione]:
     """
-    Analizza un set di MusicFile, identifica gruppi di versioni dello stesso brano
-    e li sposta in una sottocartella DA_VERIFICARE per revisione manuale.
+    Analizza un set di MusicFile e pianifica lo spostamento di gruppi di versioni
+    dello stesso brano per una revisione manuale.
     """
-    logger("\n--- Inizio Analisi per File DA VERIFICARE ---")
+    logger("\n--- Inizio Pianificazione File DA VERIFICARE ---")
+    azioni: List[SpostaFileAzione] = []
     if not file_da_considerare:
         logger("Nessun file candidato per l'analisi DA VERIFICARE.")
-        return 0
+        return azioni
 
-    # 1. Raggruppa per (artista_norm, titolo_base)
-    logger("Fase 1: Raggruppamento per artista e titolo base...")
     brani_per_base: Dict[Tuple[str, str], List[MusicFile]] = defaultdict(list)
     for mf in file_da_considerare:
-        chiave_base = (mf.artista_norm, mf.titolo_base_norm)
-        brani_per_base[chiave_base].append(mf)
-
-    # 2. Identifica i gruppi che necessitano verifica e sposta i file
-    contatore_spostati_da_verificare = 0
-    logger("Fase 2: Identificazione gruppi da verificare e spostamento...")
-
-    # Assicurarsi che la cartella base esista
-    try:
-        cartella_base_da_verificare_path.mkdir(parents=True, exist_ok=True)
-    except OSError as e:
-        logger(f"ERRORE: Impossibile creare la cartella DA_VERIFICARE base '{cartella_base_da_verificare_path}': {e}. Funzionalità saltata.")
-        return 0
+        brani_per_base[(mf.artista_norm, mf.titolo_base_norm)].append(mf)
 
     for (artista_norm, titolo_base), lista_brani in brani_per_base.items():
         if len(lista_brani) > 1:
             logger(f"  Gruppo DA VERIFICARE per Artista='{artista_norm}', Titolo Base='{titolo_base}' ({len(lista_brani)} file):")
             
-            # Crea una sottocartella specifica per questo gruppo
             nome_cartella_artista = "".join(c for c in artista_norm if c.isalnum() or c in (' ', '_')).strip() or "ArtistaSconosciuto"
             nome_cartella_titolo = "".join(c for c in titolo_base if c.isalnum() or c in (' ', '_')).strip() or "TitoloSconosciuto"
-            
             cartella_destinazione_gruppo = cartella_base_da_verificare_path / nome_cartella_artista / nome_cartella_titolo
-            try:
-                cartella_destinazione_gruppo.mkdir(parents=True, exist_ok=True)
-            except OSError as e:
-                logger(f"    ERRORE: Impossibile creare sottocartella '{cartella_destinazione_gruppo}': {e}. Skippo questo gruppo.")
-                continue
 
             for mf_da_spostare in lista_brani:
-                logger(f"    - '{mf_da_spostare.titolo_norm}' (File: {mf_da_spostare.path.name})")
-                try:
-                    nome_file_dest = cartella_destinazione_gruppo / mf_da_spostare.path.name
-                    
-                    counter = 1
-                    while nome_file_dest.exists():
-                        nome_file_dest = cartella_destinazione_gruppo / f"{mf_da_spostare.path.stem}_{counter}{mf_da_spostare.path.suffix}"
-                        counter += 1
-                        
-                    shutil.move(str(mf_da_spostare.path), str(nome_file_dest))
-                    logger(f"      -> Spostato in: {nome_file_dest}")
-                    contatore_spostati_da_verificare += 1
-                except FileNotFoundError:
-                    logger(f"      ATTENZIONE: File {mf_da_spostare.path.name} non trovato durante lo spostamento.")
-                except Exception as e:
-                    logger(f"      ERRORE durante lo spostamento di {mf_da_spostare.path.name}: {e}")
+                destinazione_proposta = cartella_destinazione_gruppo / mf_da_spostare.path.name
+                azione = SpostaFileAzione(
+                    sorgente=mf_da_spostare.path,
+                    destinazione=destinazione_proposta,
+                    motivazione="Versione da Verificare"
+                )
+                azioni.append(azione)
+                logger(f"    - Pianificato spostamento per '{mf_da_spostare.path.name}' in '{cartella_destinazione_gruppo}'")
 
-    logger("\n--- Analisi per File DA VERIFICARE Completata ---")
-    if contatore_spostati_da_verificare > 0:
-        logger(f"Spostati {contatore_spostati_da_verificare} file nella cartella '{cartella_base_da_verificare_path}' per revisione manuale.")
-    else:
-        logger("Nessun file è stato spostato nella cartella DA VERIFICARE.")
+    logger(f"Pianificate {len(azioni)} azioni di spostamento per file DA VERIFICARE.")
+    return azioni
 
-    return contatore_spostati_da_verificare
+
+def esegui_piano_azioni(piano: List[SpostaFileAzione], logger=_default_logger) -> int:
+    """
+    Esegue una lista di azioni di spostamento, gestendo la creazione di cartelle
+    e i conflitti di nomi.
+    """
+    logger("\n--- Inizio Esecuzione Piano di Spostamento ---")
+    contatore_spostati = 0
+    if not piano:
+        logger("Piano di azioni vuoto. Nessun file da spostare.")
+        return 0
+
+    for azione in piano:
+        try:
+            # Assicura che la cartella di destinazione esista
+            azione.destinazione.parent.mkdir(parents=True, exist_ok=True)
+
+            # Gestisci conflitti di nomi
+            nome_file_dest = azione.destinazione
+            counter = 1
+            while nome_file_dest.exists():
+                nome_file_dest = azione.destinazione.parent / f"{azione.destinazione.stem}_{counter}{azione.destinazione.suffix}"
+                counter += 1
+
+            shutil.move(str(azione.sorgente), str(nome_file_dest))
+            logger(f"  -> Spostato: '{azione.sorgente.name}' in '{nome_file_dest.parent}' ({azione.motivazione})")
+            contatore_spostati += 1
+
+        except FileNotFoundError:
+            logger(f"    ATTENZIONE: File sorgente non trovato, impossibile spostare: {azione.sorgente}")
+        except Exception as e:
+            logger(f"    ERRORE durante lo spostamento di {azione.sorgente.name}: {e}")
+
+    logger(f"Esecuzione completata. Spostati {contatore_spostati} file.")
+    return contatore_spostati
+
 
 def avvia_gestione_duplicati(cartella_musicale_path_abs: Path, cartella_duplicati_path_abs: Path, cartella_non_conformi_path_abs: Path, cartella_da_verificare_path_abs: Path, logger=_default_logger, progress_callback=None):
     """
@@ -430,7 +419,7 @@ def avvia_gestione_duplicati(cartella_musicale_path_abs: Path, cartella_duplicat
         logger(f"Errore: La cartella musicale '{cartella_musicale_path_abs}' non esiste o non è una directory.")
         return
 
-    # Assicura che le cartelle di destinazione esistano
+    # Assicura che le cartelle di destinazione esistano prima di ogni operazione
     for p in [cartella_duplicati_path_abs, cartella_non_conformi_path_abs, cartella_da_verificare_path_abs]:
         try:
             p.mkdir(parents=True, exist_ok=True)
@@ -451,21 +440,23 @@ def avvia_gestione_duplicati(cartella_musicale_path_abs: Path, cartella_duplicat
         logger("Nessun file audio valido trovato da processare. Operazione completata.")
         return
 
-    # 2. Sposta i duplicati esatti e ottieni la lista dei file unici mantenuti
-    logger("\n--- Fase 2: Gestione Duplicati Esatti ---")
-    _, file_mantenuti_post_duplicati = sposta_duplicati(
+    # 2. Pianifica lo spostamento dei duplicati e ottieni la lista dei file unici mantenuti
+    azioni_duplicati, file_mantenuti = pianifica_spostamento_duplicati(
         file_musicali_validi,
         cartella_duplicati_path_abs,
         logger
     )
 
-    # 3. Analizza i file rimasti per raggruppare e spostare le diverse versioni
-    logger("\n--- Fase 3: Gestione Versioni Multiple (DA VERIFICARE) ---")
-    sposta_file_da_verificare(
-        file_mantenuti_post_duplicati,
+    # 3. Pianifica lo spostamento delle diverse versioni dai file rimasti
+    azioni_da_verificare = pianifica_spostamento_da_verificare(
+        file_mantenuti,
         cartella_da_verificare_path_abs,
         logger
     )
+
+    # 4. Combina ed esegui il piano completo di azioni
+    piano_completo = azioni_duplicati + azioni_da_verificare
+    esegui_piano_azioni(piano_completo, logger)
 
     logger("\n--- Operazione Completata ---")
 
