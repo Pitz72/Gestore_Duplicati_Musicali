@@ -405,28 +405,11 @@ def esegui_piano_azioni(piano: List[SpostaFileAzione], logger=_default_logger) -
     return contatore_spostati
 
 
-def avvia_gestione_duplicati(cartella_musicale_path_abs: Path, cartella_duplicati_path_abs: Path, cartella_non_conformi_path_abs: Path, cartella_da_verificare_path_abs: Path, logger=_default_logger, progress_callback=None):
+def pianifica_gestione_completa(cartella_musicale_path_abs: Path, cartella_duplicati_path_abs: Path, cartella_non_conformi_path_abs: Path, cartella_da_verificare_path_abs: Path, logger=_default_logger, progress_callback=None) -> List[SpostaFileAzione]:
     """
-    Funzione principale per orchestrare la scansione e lo spostamento dei duplicati.
-    Accetta percorsi assoluti (oggetti Path) e un logger personalizzato.
+    Esegue tutta la logica di analisi e pianificazione, ma NON esegue gli spostamenti.
+    Restituisce il piano di azioni completo.
     """
-    logger(f"Cartella musicale da analizzare: {cartella_musicale_path_abs}")
-    logger(f"Cartella per i duplicati audio: {cartella_duplicati_path_abs}")
-    logger(f"Cartella per i file non conformi/video: {cartella_non_conformi_path_abs}")
-    logger(f"Cartella per i file da verificare: {cartella_da_verificare_path_abs}")
-
-    if not cartella_musicale_path_abs.is_dir():
-        logger(f"Errore: La cartella musicale '{cartella_musicale_path_abs}' non esiste o non è una directory.")
-        return
-
-    # Assicura che le cartelle di destinazione esistano prima di ogni operazione
-    for p in [cartella_duplicati_path_abs, cartella_non_conformi_path_abs, cartella_da_verificare_path_abs]:
-        try:
-            p.mkdir(parents=True, exist_ok=True)
-        except OSError as e:
-            logger(f"Errore critico durante la creazione della cartella '{p}': {e}")
-            return
-    
     # 1. Scansiona la cartella, sposta i non conformi e ottieni una lista di file audio validi
     logger("\n--- Fase 1: Scansione e Analisi File ---")
     file_musicali_validi, _ = scansiona_cartella(
@@ -437,8 +420,8 @@ def avvia_gestione_duplicati(cartella_musicale_path_abs: Path, cartella_duplicat
     )
 
     if not file_musicali_validi:
-        logger("Nessun file audio valido trovato da processare. Operazione completata.")
-        return
+        logger("Nessun file audio valido trovato da processare.")
+        return []
 
     # 2. Pianifica lo spostamento dei duplicati e ottieni la lista dei file unici mantenuti
     azioni_duplicati, file_mantenuti = pianifica_spostamento_duplicati(
@@ -454,8 +437,39 @@ def avvia_gestione_duplicati(cartella_musicale_path_abs: Path, cartella_duplicat
         logger
     )
 
-    # 4. Combina ed esegui il piano completo di azioni
-    piano_completo = azioni_duplicati + azioni_da_verificare
+    return azioni_duplicati + azioni_da_verificare
+
+
+def avvia_gestione_duplicati(cartella_musicale_path_abs: Path, cartella_duplicati_path_abs: Path, cartella_non_conformi_path_abs: Path, cartella_da_verificare_path_abs: Path, logger=_default_logger, progress_callback=None):
+    """
+    Funzione principale per orchestrare la scansione e lo spostamento dei duplicati.
+    Chiama la pianificazione e poi esegue immediatamente il piano.
+    """
+    logger(f"Avvio gestione completa per: {cartella_musicale_path_abs}")
+
+    if not cartella_musicale_path_abs.is_dir():
+        logger(f"Errore: La cartella musicale '{cartella_musicale_path_abs}' non esiste o non è una directory.")
+        return
+
+    # Assicura che le cartelle di destinazione esistano prima di ogni operazione
+    for p in [cartella_duplicati_path_abs, cartella_non_conformi_path_abs, cartella_da_verificare_path_abs]:
+        try:
+            p.mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            logger(f"Errore critico durante la creazione della cartella '{p}': {e}")
+            return
+
+    # Pianifica tutte le azioni
+    piano_completo = pianifica_gestione_completa(
+        cartella_musicale_path_abs,
+        cartella_duplicati_path_abs,
+        cartella_non_conformi_path_abs,
+        cartella_da_verificare_path_abs,
+        logger,
+        progress_callback
+    )
+
+    # Esegui il piano
     esegui_piano_azioni(piano_completo, logger)
 
     logger("\n--- Operazione Completata ---")
