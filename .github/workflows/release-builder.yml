@@ -24,20 +24,21 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        # Usiamo python -m pip per essere sicuri di installare nel posto giusto
         python -m pip install -r requirements.txt
 
-    - name: Build with PyInstaller (Windows)
-      if: matrix.os == 'windows-latest'
-      run: python -m pyinstaller --name="TuneUp" --onefile --windowed --icon="assets/icon.ico" gui_gestore_musicale.py
-
-    - name: Build with PyInstaller (macOS)
-      if: matrix.os == 'macos-latest'
-      run: python -m pyinstaller --name="TuneUp" --onefile --windowed --icon="assets/icon.icns" gui_gestore_musicale.py
-
-    - name: Build with PyInstaller (Linux)
-      if: matrix.os == 'linux-latest'
-      run: python -m pyinstaller --name="TuneUp" --onefile gui_gestore_musicale.py
+    - name: Build with PyInstaller
+      run: |
+        if [ "$RUNNER_OS" == "Windows" ]; then
+          # Per Windows, l'icona .ico deve già esistere
+          python -m pyinstaller --name="TuneUp" --onefile --windowed --icon="assets/icon.ico" gui_gestore_musicale.py
+        elif [ "$RUNNER_OS" == "macOS" ]; then
+          # Per macOS, l'icona .icns deve già esistere
+          python -m pyinstaller --name="TuneUp" --onefile --windowed --icon="assets/icon.icns" gui_gestore_musicale.py
+        else
+          # Per Linux, l'icona non viene inclusa nell'eseguibile
+          python -m pyinstaller --name="TuneUp" --onefile gui_gestore_musicale.py
+        fi
+      shell: bash
 
     - name: Prepare Artifacts for Upload
       run: |
