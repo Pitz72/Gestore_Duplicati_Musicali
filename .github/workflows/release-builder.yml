@@ -24,7 +24,8 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -r requirements.txt
+        # Usiamo python -m pip per essere sicuri di installare nel posto giusto
+        python -m pip install -r requirements.txt
 
     - name: Build with PyInstaller (Windows)
       if: matrix.os == 'windows-latest'
@@ -47,7 +48,7 @@ jobs:
         else
           mv dist/TuneUp dist/TuneUp-Linux-x64
         fi
-      shell: bash # Qui bash va bene perché i comandi sono universali
+      shell: bash
 
     - name: Upload Release Assets
       uses: softprops/action-gh-release@v2
