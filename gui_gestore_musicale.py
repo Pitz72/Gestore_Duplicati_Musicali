@@ -1,5 +1,7 @@
 import tkinter as tk
-from tkinter import filedialog, scrolledtext, ttk, messagebox
+from tkinter import filedialog, scrolledtext, messagebox
+import ttkbootstrap as ttk
+from ttkbootstrap.constants import *
 import threading
 from pathlib import Path
 from typing import List
@@ -11,7 +13,7 @@ from gestore_duplicati_musicali import (
     SpostaFileAzione
 )
 
-class PreviewWindow(tk.Toplevel):
+class PreviewWindow(ttk.Toplevel):
     """Finestra modale per visualizzare l'anteprima del piano di azioni."""
     def __init__(self, parent, piano: List[SpostaFileAzione], execute_callback, cartella_musicale_base: str):
         super().__init__(parent)
@@ -83,10 +85,41 @@ class PreviewWindow(tk.Toplevel):
         self.destroy()
 
 
+class SplashScreen(ttk.Toplevel):
+    """Schermata di avvio (splash screen)."""
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.title("Splash")
+
+        # Rimuovi la barra del titolo e i bordi
+        self.overrideredirect(True)
+
+        width = 400
+        height = 250
+        screen_width = self.winfo_screenwidth()
+        screen_height = self.winfo_screenheight()
+        x = (screen_width / 2) - (width / 2)
+        y = (screen_height / 2) - (height / 2)
+        self.geometry(f'{width}x{height}+{int(x)}+{int(y)}')
+
+        # Contenuto
+        frame = ttk.Frame(self, bootstyle="dark")
+        frame.pack(expand=True, fill="both")
+
+        ttk.Label(frame, text="Gestore Duplicati Musicali", font=("Helvetica", 20, "bold"), bootstyle="inverse-dark").pack(pady=(40, 10))
+        ttk.Label(frame, text="Versione 1.0", font=("Helvetica", 10), bootstyle="inverse-dark").pack()
+        ttk.Label(frame, text="di Simone Pizzi", font=("Helvetica", 10, "italic"), bootstyle="inverse-dark").pack(pady=5)
+
+        ttk.Label(frame, text="(C) 2025 Runtime Radio", font=("Helvetica", 8), bootstyle="secondary").pack(side="bottom", pady=10)
+
+        # Chiudi dopo 3 secondi
+        self.after(3000, self.destroy)
+
+
 class AppGestoreMusicaleV0_1:
     def __init__(self, root_window):
         self.root = root_window
-        self.root.title("Gestore Duplicati Musicali v0.1 Alpha")
+        self.root.title("Gestore Duplicati Musicali v1.0")
         self.root.geometry("800x600")
 
         # Variabili per i percorsi delle cartelle
@@ -124,6 +157,11 @@ class AppGestoreMusicaleV0_1:
         self.entry_da_verificare.grid(row=3, column=1, sticky=(tk.W, tk.E), padx=5, pady=2)
         # Non mettiamo un bottone Sfoglia, dato che è derivato
 
+        # Label per il conteggio dei file
+        self.file_count_var = tk.StringVar(value="")
+        file_count_label = ttk.Label(cartelle_frame, textvariable=self.file_count_var, foreground="blue")
+        file_count_label.grid(row=4, column=0, columnspan=3, sticky=tk.W, padx=5, pady=5)
+
         # ---- Area di Log ----
         log_frame = ttk.LabelFrame(main_frame, text="Log Operazioni", padding="10")
         log_frame.grid(row=1, column=0, columnspan=3, sticky=(tk.W, tk.E, tk.N, tk.S), pady=5)
@@ -160,13 +198,13 @@ class AppGestoreMusicaleV0_1:
         percorso_selezionato = filedialog.askdirectory(title=titolo_dialog)
         if percorso_selezionato:
             var_percorso.set(percorso_selezionato)
-            # Imposta default per duplicati/non conformi se non ancora specificati e se stiamo selezionando la cartella musicale
-            if var_percorso == self.cartella_musicale_var: 
+            # Se stiamo selezionando la cartella musicale, avvia il conteggio e imposta i default
+            if var_percorso == self.cartella_musicale_var:
+                self.avvia_conteggio_file_thread(percorso_selezionato)
                 path_musicale_sel = Path(percorso_selezionato)
                 if not self.cartella_duplicati_var.get():
                     path_duplicati_default = path_musicale_sel / "DOPPIONI"
                     self.cartella_duplicati_var.set(str(path_duplicati_default))
-                    # Imposta anche il default per DA_VERIFICARE basato sui duplicati
                     self.cartella_da_verificare_var.set(str(path_duplicati_default / "DA_VERIFICARE")) 
                 if not self.cartella_non_conformi_var.get():
                     self.cartella_non_conformi_var.set(str(path_musicale_sel / "NON CONFORMI"))
@@ -175,8 +213,22 @@ class AppGestoreMusicaleV0_1:
             elif var_percorso == self.cartella_duplicati_var:
                 if self.cartella_duplicati_var.get():
                     self.cartella_da_verificare_var.set(str(Path(self.cartella_duplicati_var.get()) / "DA_VERIFICARE"))
-                else: # Se cancella il percorso duplicati, cancella anche da verificare
+                else:
                     self.cartella_da_verificare_var.set("")
+
+    def avvia_conteggio_file_thread(self, percorso):
+        """Avvia un thread per contare i file senza bloccare la GUI."""
+        self.file_count_var.set("Conteggio file in corso...")
+        thread = threading.Thread(target=self._esegui_conteggio_file, args=(percorso,), daemon=True)
+        thread.start()
+
+    def _esegui_conteggio_file(self, percorso):
+        """Conta i file in modo ricorsivo e aggiorna la GUI."""
+        try:
+            count = sum(1 for f in Path(percorso).rglob('*') if f.is_file())
+            self.root.after(0, self.file_count_var.set, f"Trovati {count:,} file nella cartella di origine.".replace(",", "."))
+        except Exception as e:
+            self.root.after(0, self.file_count_var.set, f"Errore nel conteggio file: {e}")
         
     def _log_message(self, message, flush=True): # flush è per compatibilità con _default_logger
         """ Aggiunge un messaggio all'area di log della GUI. """
@@ -306,7 +358,22 @@ class AppGestoreMusicaleV0_1:
         analysis_thread = threading.Thread(target=self._esegui_analisi, daemon=True)
         analysis_thread.start()
 
+def show_splash_and_main_window():
+    # Crea la finestra principale ma non mostrarla ancora
+    root = ttk.Window(themename="darkly")
+    root.withdraw()
+
+    # Mostra la splash screen
+    splash = SplashScreen(root)
+
+    # Dopo che la splash screen si è chiusa (dopo 3000ms), mostra la finestra principale
+    def show_main():
+        splash.destroy()
+        app = AppGestoreMusicaleV0_1(root)
+        root.deiconify() # Mostra la finestra principale
+
+    root.after(3000, show_main)
+    root.mainloop()
+
 if __name__ == '__main__':
-    root = tk.Tk()
-    app = AppGestoreMusicaleV0_1(root)
-    root.mainloop() 
+    show_splash_and_main_window()
