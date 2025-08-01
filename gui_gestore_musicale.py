@@ -122,6 +122,9 @@ class AppGestoreMusicaleV0_1:
         self.root.title("Gestore Duplicati Musicali v1.0")
         self.root.geometry("800x600")
 
+        # Variabili di stato
+        self.conteggio_file_iniziale = 0
+
         # Variabili per i percorsi delle cartelle
         self.cartella_musicale_var = tk.StringVar()
         self.cartella_duplicati_var = tk.StringVar()
@@ -159,7 +162,7 @@ class AppGestoreMusicaleV0_1:
 
         # Label per il conteggio dei file
         self.file_count_var = tk.StringVar(value="")
-        file_count_label = ttk.Label(cartelle_frame, textvariable=self.file_count_var, foreground="blue")
+        file_count_label = ttk.Label(cartelle_frame, textvariable=self.file_count_var, bootstyle="info")
         file_count_label.grid(row=4, column=0, columnspan=3, sticky=tk.W, padx=5, pady=5)
 
         # ---- Area di Log ----
@@ -225,9 +228,11 @@ class AppGestoreMusicaleV0_1:
     def _esegui_conteggio_file(self, percorso):
         """Conta i file in modo ricorsivo e aggiorna la GUI."""
         try:
-            count = sum(1 for f in Path(percorso).rglob('*') if f.is_file())
-            self.root.after(0, self.file_count_var.set, f"Trovati {count:,} file nella cartella di origine.".replace(",", "."))
+            self.conteggio_file_iniziale = sum(1 for f in Path(percorso).rglob('*') if f.is_file())
+            testo_conteggio = f"Trovati {self.conteggio_file_iniziale:,} file nella cartella di origine.".replace(",", ".")
+            self.root.after(0, self.file_count_var.set, testo_conteggio)
         except Exception as e:
+            self.conteggio_file_iniziale = 0
             self.root.after(0, self.file_count_var.set, f"Errore nel conteggio file: {e}")
         
     def _log_message(self, message, flush=True): # flush è per compatibilità con _default_logger
@@ -285,9 +290,21 @@ class AppGestoreMusicaleV0_1:
         """Esegue il piano di spostamento e logga il risultato."""
         self._log_message("\n--- Esecuzione Spostamenti Approvata dall'Utente ---")
         try:
-            esegui_piano_azioni(piano, logger=self._log_message)
+            file_spostati = esegui_piano_azioni(piano, logger=self._log_message)
             self._log_message("--- Spostamenti Completati ---")
-            messagebox.showinfo("Successo", f"Operazione completata. Controlla il log per i dettagli.")
+
+            # Calcola e mostra il report finale
+            file_rimanenti = self.conteggio_file_iniziale - file_spostati
+            report = (
+                f"\n--- REPORT FINALE ---\n"
+                f"File Iniziali: {self.conteggio_file_iniziale:,}\n"
+                f"File Spostati:  {file_spostati:,}\n"
+                f"File Rimanenti: {file_rimanenti:,}\n"
+                f"---------------------"
+            ).replace(",", ".")
+            self._log_message(report)
+
+            messagebox.showinfo("Successo", f"Operazione completata. Spostati {file_spostati} file.\nControlla il log per i dettagli.")
         except Exception as e:
             self._log_message(f"ERRORE CRITICO DURANTE L'ESECUZIONE: {e}")
             import traceback
@@ -360,7 +377,7 @@ class AppGestoreMusicaleV0_1:
 
 def show_splash_and_main_window():
     # Crea la finestra principale ma non mostrarla ancora
-    root = ttk.Window(themename="darkly")
+    root = ttk.Window(themename="superhero")
     root.withdraw()
 
     # Mostra la splash screen
