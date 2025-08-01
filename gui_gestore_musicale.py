@@ -13,7 +13,7 @@ from gestore_duplicati_musicali import (
 
 class PreviewWindow(tk.Toplevel):
     """Finestra modale per visualizzare l'anteprima del piano di azioni."""
-    def __init__(self, parent, piano: List[SpostaFileAzione], execute_callback):
+    def __init__(self, parent, piano: List[SpostaFileAzione], execute_callback, cartella_musicale_base: str):
         super().__init__(parent)
         self.transient(parent)
         self.title("Anteprima Spostamenti")
@@ -21,6 +21,7 @@ class PreviewWindow(tk.Toplevel):
         self.parent = parent
         self.piano = piano
         self.execute_callback = execute_callback
+        self.cartella_musicale_base = cartella_musicale_base
 
         self.create_widgets()
         self.populate_tree()
@@ -66,8 +67,8 @@ class PreviewWindow(tk.Toplevel):
         for azione in self.piano:
             # Mostra percorsi relativi alla cartella musicale per leggibilità, se possibile
             try:
-                sorgente_rel = azione.sorgente.relative_to(self.parent.cartella_musicale_var.get())
-                dest_rel = azione.destinazione.relative_to(self.parent.cartella_musicale_var.get())
+                sorgente_rel = azione.sorgente.relative_to(self.cartella_musicale_base)
+                dest_rel = azione.destinazione.relative_to(self.cartella_musicale_base)
             except ValueError:
                 sorgente_rel = azione.sorgente
                 dest_rel = azione.destinazione
@@ -287,7 +288,8 @@ class AppGestoreMusicaleV0_1:
                  self.root.after(0, self.abilita_controlli, True)
 
     def mostra_finestra_anteprima(self, piano):
-        PreviewWindow(self.root, piano, self._esegui_spostamenti)
+        cartella_base = self.cartella_musicale_var.get()
+        PreviewWindow(self.root, piano, self._esegui_spostamenti, cartella_base)
         # Dopo che la finestra di anteprima è chiusa (sia per esecuzione che per annullamento),
         # riabilitiamo i controlli.
         self.abilita_controlli(True)
