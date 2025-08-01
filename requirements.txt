@@ -1,0 +1,5 @@
+mutagen
+pytest
+pytest-mock
+pyinstaller
+ttkbootstrap

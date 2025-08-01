@@ -32,16 +32,13 @@ Funzionalità Principali (Versione Attuale):
 
 Evoluzioni Future Previste:
 *   Miglioramenti GUI:
-    *   Visualizzazione interattiva dei potenziali duplicati e dei file "DA VERIFICARE" prima di qualsiasi spostamento, con possibilità per l'utente di:
-        *   Selezionare il file da mantenere.
-        *   Marcare file come "non duplicati" o approvare/modificare lo spostamento in "DA VERIFICARE".
-        *   Confrontare metadati e possibilmente ascoltare anteprime.
-    *   Possibilità di interrompere l'analisi in corso in modo sicuro.
-    *   Configurazione più granulare dei percorsi direttamente dalla GUI (es. nome esatto cartella "DA_VERIFICARE").
+    *   **Finestra di Anteprima Interattiva (Implementata)**: Prima di qualsiasi spostamento, la GUI ora presenta una finestra di anteprima modale. Questa finestra mostra una tabella dettagliata di tutte le azioni di spostamento pianificate, specificando il file sorgente, la destinazione e la motivazione (es. "Duplicato", "Versione da Verificare"). L'utente ha il pieno controllo e può decidere se eseguire il piano di spostamenti o annullarlo, prevenendo modifiche accidentali.
+    *   (Futuro) Possibilità di interrompere l'analisi in corso in modo sicuro.
+    *   (Futuro) Configurazione più granulare dei percorsi direttamente dalla GUI.
 *   Gestione Avanzata dei File:
-    *   Logica più sofisticata per identificare file "DA VERIFICARE" (es. cover, conflitti di metadati più complessi, soglie di similarità per titoli).
-    *   Permettere all'utente di definire `VERSION_PATTERNS` personalizzati (tramite file di configurazione o GUI).
+    *   (Futuro) Logica più sofisticata per identificare file "DA VERIFICARE".
+    *   (Futuro) Permettere all'utente di definire `VERSION_PATTERNS` personalizzati.
 *   Supporto per altri formati audio (FLAC, AAC, ecc.).
 *   Criteri di qualità più avanzati per la selezione del file da mantenere (es. bitrate, data modifica).
 *   Logging più strutturato su file (anche per la GUI).
-*   Packaging dell'applicazione come eseguibile stand-alone per Windows, macOS e Linux. 
+*   Packaging dell'applicazione come eseguibile stand-alone per Windows, macOS e Linux (In Corso).
