@@ -1,13 +1,11 @@
 name: Build TuneUp Releases
 
-# Questo workflow si attiva quando crei una nuova release su GitHub
 on:
   release:
     types: [created]
 
 jobs:
   build:
-    # Esegui questo job su tre diverse macchine virtuali
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
@@ -16,33 +14,17 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
-        python-version: '3.10' # Usiamo una versione stabile di Python
+        python-version: '3.10'
 
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-
-    - name: (macOS only) Create .icns icon
-      if: matrix.os == 'macos-latest'
-      run: |
-        mkdir -p icon.iconset
-        sips -z 1024 1024 assets/icon.png -o icon.iconset/icon_1024x1024.png
-        iconutil -c icns icon.iconset -o assets/icon.icns
-      shell: bash
-
-    - name: (Windows only) Create .ico icon
-      if: matrix.os == 'windows-latest'
-      # Usiamo una action della community per convertire png in ico
-      uses: Niloofaar/png-to-ico-action@v1.0.0
-      with:
-          source_path: 'assets/icon.png'
-          destination_path: 'assets/icon.ico'
 
     - name: Build with PyInstaller
       run: |
@@ -55,26 +37,21 @@ jobs:
         fi
       shell: bash
 
-    - name: Rename artifacts
+    - name: Prepare Artifacts for Upload
       run: |
         if [ "$RUNNER_OS" == "Windows" ]; then
-          mv dist/TuneUp.exe dist/TuneUp-Windows.exe
+          mv dist/TuneUp.exe dist/TuneUp-Windows-x64.exe
         elif [ "$RUNNER_OS" == "macOS" ]; then
-          # Su macOS, PyInstaller crea una cartella .app
           zip -r dist/TuneUp-macOS.zip dist/TuneUp.app
         else
-          mv dist/TuneUp dist/TuneUp-Linux
+          mv dist/TuneUp dist/TuneUp-Linux-x64
         fi
       shell: bash
 
-    - name: Upload Release Asset
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - name: Upload Release Assets
+      uses: softprops/action-gh-release@v2
       with:
-        upload_url: ${{ github.event.release.upload_url }}
-        asset_path: |
-          dist/TuneUp-*
-        asset_name: |
-          ${{ matrix.os == 'windows-latest' && 'TuneUp-Windows.exe' || '' }}${{ matrix.os == 'macos-latest' && 'TuneUp-macOS.zip' || '' }}${{ matrix.os == 'linux-latest' && 'TuneUp-Linux' || '' }}
-        asset_content_type: application/octet-stream
+        files: |
+          dist/TuneUp-Windows-x64.exe
+          dist/TuneUp-macOS.zip
+          dist/TuneUp-Linux-x64
