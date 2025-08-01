@@ -26,16 +26,17 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
 
-    - name: Build with PyInstaller
-      run: |
-        if [ "$RUNNER_OS" == "Windows" ]; then
-          python -m pyinstaller --name="TuneUp" --onefile --windowed --icon="assets/icon.ico" gui_gestore_musicale.py
-        elif [ "$RUNNER_OS" == "macOS" ]; then
-          python -m pyinstaller --name="TuneUp" --onefile --windowed --icon="assets/icon.icns" gui_gestore_musicale.py
-        else
-          python -m pyinstaller --name="TuneUp" --onefile gui_gestore_musicale.py
-        fi
-      shell: bash
+    - name: Build with PyInstaller (Windows)
+      if: matrix.os == 'windows-latest'
+      run: python -m pyinstaller --name="TuneUp" --onefile --windowed --icon="assets/icon.ico" gui_gestore_musicale.py
+
+    - name: Build with PyInstaller (macOS)
+      if: matrix.os == 'macos-latest'
+      run: python -m pyinstaller --name="TuneUp" --onefile --windowed --icon="assets/icon.icns" gui_gestore_musicale.py
+
+    - name: Build with PyInstaller (Linux)
+      if: matrix.os == 'linux-latest'
+      run: python -m pyinstaller --name="TuneUp" --onefile gui_gestore_musicale.py
 
     - name: Prepare Artifacts for Upload
       run: |
@@ -46,7 +47,7 @@ jobs:
         else
           mv dist/TuneUp dist/TuneUp-Linux-x64
         fi
-      shell: bash
+      shell: bash # Qui bash va bene perché i comandi sono universali
 
     - name: Upload Release Assets
       uses: softprops/action-gh-release@v2
